@@ -76,3 +76,57 @@ button:disabled { opacity: .6; cursor: wait; }
 
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(88px + env(safe-area-inset-bottom, 0px)); background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: 13.5px; font-weight: 500; z-index: 20; max-width: min(92vw, 400px); text-align: center; box-shadow: var(--shadow); }
 @media (prefers-reduced-motion: no-preference) { .view { animation: entrar .18s ease-out; } @keyframes entrar { from { opacity: .4; transform: translateY(4px); } } }
+
+/* Itens que só aparecem no computador */
+.tabbar .nav-brand, .tabbar .nav-credit { display: none; }
+.form-grid { display: grid; gap: 16px; }
+.sessao { display: grid; gap: 10px; text-align: center; }
+
+/* Tablet: coluna um pouco mais larga */
+@media (min-width: 600px) and (max-width: 959px) {
+  .app { max-width: 640px; }
+  .tabbar { width: min(100%, 640px); }
+  .form-grid { grid-template-columns: 1fr 1fr; }
+  .form-grid .full { grid-column: 1 / -1; }
+}
+
+/* Computador: menu lateral fixo e conteúdo largo */
+@media (min-width: 960px) {
+  .app { max-width: none; padding-bottom: 0; padding-left: 248px; border: 0; }
+  .app.sem-abas { padding-left: 0; }
+  .wrap { padding-left: 40px; padding-right: 40px; }
+  .topbar, main.view { max-width: 1080px; }
+  .topbar { padding-top: 28px; padding-bottom: 16px; }
+  .topbar h1 { font-size: 34px; }
+  .topbar .sub { font-size: 13.5px; }
+  .stack { padding-block: 24px 40px; gap: 20px; }
+
+  .tabbar { top: 0; bottom: 0; left: 0; transform: none; width: 248px; display: flex; flex-direction: column; gap: 4px; padding: 20px 14px; border-top: 0; border-right: 1px solid var(--line); }
+  .tabbar a { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; font-size: 15px; color: var(--fg); }
+  .tabbar a:hover { background: var(--surface-2); }
+  .tabbar a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); }
+  .tabbar svg { width: 21px; height: 21px; }
+  .tabbar .nav-brand { display: flex; font-family: var(--f-display); font-size: 23px; font-weight: 700; white-space: nowrap; padding: 4px 8px 18px; margin-bottom: 6px; border-bottom: 1px solid var(--line); border-radius: 0; color: var(--fg); }
+  .tabbar .nav-brand:hover { background: none; }
+  .nav-brand img { width: 36px; height: 36px; }
+  .tabbar .nav-credit { display: block; margin: auto 0 0; padding: 14px 8px 0; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .nav-credit b { color: var(--fg); font-weight: 600; }
+  main.view .credit { display: none; }
+
+  .form-grid { grid-template-columns: 1fr 1fr; gap: 18px 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 24px; box-shadow: var(--shadow); max-width: 760px; }
+  .form-grid .full { grid-column: 1 / -1; }
+  .form-grid .btn-block { width: auto; justify-self: start; padding-inline: 32px; }
+  .sessao { max-width: 760px; display: flex; align-items: center; justify-content: space-between; text-align: left; }
+  .vazio { padding: 48px 24px; }
+  main.view > .stack > .btn-block { width: auto; justify-self: start; }
+
+  /* Tela de entrada: marca à esquerda, formulário à direita */
+  .login { max-width: 980px; margin: 0 auto; grid-template-columns: 1fr 420px; align-items: center; column-gap: 64px; }
+  .login .brand { justify-items: start; text-align: left; }
+  .login .brand img { width: 96px; height: 96px; }
+  .login .brand h1 { font-size: 64px; }
+  .login .brand p { font-size: 18px; max-width: 26ch; }
+  .login .credit { grid-column: 1 / -1; }
+  .toast { bottom: 32px; left: calc(50% + 124px); }
+  .app.sem-abas ~ .toast { left: 50%; }
+}
