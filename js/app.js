@@ -21,7 +21,9 @@ const state = {
   filtro: 'todos',
   histFiltro: 'tudo',
   fotoUrls: new Map(),    // caminho da foto -> { url, ate }
-  fotoEnviando: null      // 'olho' | 'cabeca' enquanto envia
+  fotoEnviando: null,     // 'olho' | 'cabeca' enquanto envia
+  admin: false,           // a conta é de administrador (conferido no banco)
+  adm: { carregado: false, erro: null, resumo: null, usuarios: [], aba: 'usuarios', busca: '', pombos: null, plantel: {} }
 };
 
 // Erros que o Supabase devolve no endereço (ex.: link de e-mail vencido).
@@ -65,6 +67,7 @@ const I = {
   back: '<svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>',
   search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>',
   edit: '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg>',
+  shield: '<svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>',
   camera: '<svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>'
 };
 
@@ -147,7 +150,7 @@ function rota() {
   const h = location.hash.replace(/^#\/?/, '');
   const [caminho, busca = ''] = h.split('?');
   const partes = caminho.split('/').filter(Boolean);
-  const nomes = ['plantel', 'novo', 'pombo', 'editar', 'evento', 'pedigree', 'conta'];
+  const nomes = ['plantel', 'novo', 'pombo', 'editar', 'evento', 'pedigree', 'conta', 'admin'];
   const nome = nomes.includes(partes[0]) ? partes[0] : 'plantel';
   return { nome, a: partes[1] || null, b: partes[2] || null, q: new URLSearchParams(busca) };
 }
@@ -158,9 +161,9 @@ function shell(r, titulo, sub, corpo, { voltar = null, direita = '' } = {}) {
   return `<header class="topbar wrap">${voltar ? `<a class="icon-btn" href="${voltar}" aria-label="Voltar">${I.back}</a>` : ''}
     <h1>${esc(titulo)}${sub ? `<span class="sub">${esc(sub)}</span>` : ''}</h1>${direita}</header>
   <main class="view wrap"><div class="stack">${corpo}${credito()}</div></main>
-  <nav class="tabbar" aria-label="Menu">
+  <nav class="tabbar${state.admin ? ' com-admin' : ''}" aria-label="Menu">
     <a class="nav-brand" href="#/plantel"><img src="img/icone.svg" alt=""><span>${esc(C.nomeApp)}</span></a>
-    ${aba('plantel', I.list, 'Plantel')}${aba('novo', `<span class="plus">${I.plus}</span>`, 'Cadastrar')}${aba('pedigree', I.tree, 'Pedigree')}${aba('conta', I.user, 'Meu pombal')}
+    ${aba('plantel', I.list, 'Plantel')}${aba('novo', `<span class="plus">${I.plus}</span>`, 'Cadastrar')}${aba('pedigree', I.tree, 'Pedigree')}${aba('conta', I.user, 'Meu pombal')}${state.admin ? aba('admin', I.shield, 'Admin') : ''}
     <p class="nav-credit">App desenvolvido por<br><b>${esc(C.criador)}</b></p>
   </nav>`;
 }
@@ -444,6 +447,9 @@ function podeEditarDados(r) {
 
 function vFormPombo(r, q) {
   const editando = !!r;
+  const volta = /^pedigree\/[0-9a-z-]+$/i.test(q.get('volta') || '') ? q.get('volta') : '';
+  const lado = q.get('lado') === 'mae' ? 'mae' : 'pai';
+  const filho = !editando && q.get('filho') ? pombo(q.get('filho')) : null;
   const id = r ? r.pombo_id : null;
   if (editando && !(state.ficha.id === id && !state.ficha.carregando)) return shell('editar', 'Editar pombo', '', carregandoHtml, { voltar: `#/pombo/${id}` });
   const p = editando ? pombo(id) || {} : {};
@@ -458,6 +464,9 @@ function vFormPombo(r, q) {
   const dono = (state.ficha.donos || []).find(d => d.situacao === 'ativo' && !d.voce);
   const corpo = `<form id="f-pombo" class="form-grid" novalidate>
     ${editando ? `<input type="hidden" id="f-plantel" value="${esc(r.id)}">` : ''}
+    ${volta ? `<input type="hidden" id="f-volta" value="${esc(volta)}">` : ''}
+    ${filho ? `<input type="hidden" id="f-filho" value="${esc(filho.id)}"><input type="hidden" id="f-lado" value="${lado}">
+      <p class="msg info full">Você está cadastrando ${lado === 'pai' ? 'o <b>pai</b>' : 'a <b>mãe</b>'} de <b class="mono">${esc(anilha(filho))}</b>${filho.nome ? ' (' + esc(filho.nome) + ')' : ''}. Ao salvar, ${lado === 'pai' ? 'ele' : 'ela'} já fica ligad${lado === 'pai' ? 'o' : 'a'} no pedigree.</p>` : ''}
     <p class="msg erro full" id="f-erro" role="alert" hidden></p>
     <div class="full field-group">
       <span class="label">Anilha</span>
@@ -493,7 +502,9 @@ function vFormPombo(r, q) {
     <label class="check"><input type="checkbox" id="rm-registros"> Apagar também os registros que eu fiz no histórico dele</label>
     <button class="btn btn-perigo" type="button" data-remover="${esc(r.id)}">Tirar do meu plantel</button>
   </details>` : ''}`;
-  return shell(editando ? 'editar' : 'novo', editando ? 'Editar pombo' : 'Cadastrar pombo', editando ? anilha(p) : 'Novo pombo no plantel', corpo, { voltar: editando ? `#/pombo/${id}` : '#/plantel' });
+  return shell(editando ? 'editar' : 'novo', editando ? 'Editar pombo' : filho ? 'Cadastrar ancestral' : 'Cadastrar pombo',
+    editando ? anilha(p) : filho ? `${lado === 'pai' ? 'Pai' : 'Mãe'} de ${anilha(filho)}` : 'Novo pombo no plantel', corpo,
+    { voltar: volta ? '#/' + volta : editando ? `#/pombo/${id}` : '#/plantel' });
 }
 
 function ajustarCamposSituacao() {
@@ -503,7 +514,7 @@ function ajustarCamposSituacao() {
   document.querySelectorAll('[data-se="saiu"]').forEach(el => { el.hidden = !SAIU.includes(v); });
 }
 
-let buscaT;
+let buscaT, buscaAdmT;
 function verificarAnilha() {
   const prev = $('#ring-preview b'); if (!prev) return;
   const n = $('#f-num').value.trim(), a = $('#f-ano').value.trim(), pa = $('#f-pais').value.trim().toUpperCase();
@@ -599,10 +610,18 @@ function listaPedigreeHtml() {
   return l.length ? l.map(({ r, p }) => itemPombo(p, r, `#/pedigree/${p.id}`)).join('') : '<li class="empty">Nenhum pombo encontrado.</li>';
 }
 
-function pcardPed(p, n) {
+function pcardPed(p, n, pos, raiz) {
   const f = n % 2 === 1 ? 'f' : '';
-  if (!p) return `<div class="pcard unknown ${f}"><small>${rotuloPos(n)}</small><span>Não informado</span></div>`;
-  return `<a class="pcard ${f}" href="#/pombo/${p.id}"><small>${rotuloPos(n)}</small><span class="mono">${esc(anilha(p))}</span><span>${esc(p.nome || p.cor || '')}</span></a>`;
+  const volta = encodeURIComponent('pedigree/' + raiz);
+  if (!p) {
+    const filho = pos[n >> 1];
+    if (!filho) return `<div class="pcard unknown ${f}"><small>${rotuloPos(n)}</small><span>Não informado</span></div>`;
+    const lado = n % 2 === 0 ? 'pai' : 'mae';
+    return `<a class="pcard unknown novo ${f}" href="#/novo?situacao=referencia&sexo=${lado === 'pai' ? 'M' : 'F'}&filho=${filho.id}&lado=${lado}&volta=${volta}"><small>${rotuloPos(n)}</small><span>${I.plus}Cadastrar</span></a>`;
+  }
+  const reg = meuRegistro(p.id);
+  const href = reg ? `#/editar/${reg.id}?volta=${volta}` : `#/pombo/${p.id}`;
+  return `<a class="pcard ${f}" href="${href}" title="${reg ? 'Editar' : 'Abrir a ficha'}"><small>${rotuloPos(n)}</small><span class="mono">${esc(anilha(p))}</span><span>${esc(p.nome || p.cor || '')}</span></a>`;
 }
 
 function vPedigree(id) {
@@ -618,7 +637,7 @@ function vPedigree(id) {
   let geracoes = '';
   for (let g = 1; g <= 4; g++) {
     const cards = [];
-    for (let n = 2 ** g; n < 2 ** (g + 1); n++) cards.push(pcardPed(pos[n], n));
+    for (let n = 2 ** g; n < 2 ** (g + 1); n++) cards.push(pcardPed(pos[n], n, pos, id));
     geracoes += `<section class="section"><h2>${NOMES_GERACAO[g]}</h2><div class="ped-ger g${g}">${cards.join('')}</div></section>`;
   }
   const corpo = `
@@ -633,7 +652,7 @@ function vPedigree(id) {
       <p class="hint">Vem das observações do pombo. Pode mudar aqui só para este PDF. O texto de cada ancestral vem de "Títulos e observações" na ficha dele.</p></div>
     ${p.foto_olho || p.foto_cabeca ? `<label class="check"><input type="checkbox" id="ped-fotos" checked> Incluir no PDF as fotos ${p.foto_olho && p.foto_cabeca ? 'do olho e da cabeça' : p.foto_olho ? 'do olho' : 'da cabeça'}</label>` : ''}
     <div class="actions"><button class="btn btn-primary" type="button" data-pdf="${esc(p.id)}">${I.tree}Baixar pedigree em PDF</button><a class="btn btn-ghost" href="#/pedigree">Escolher outro pombo</a></div>
-    ${faltam ? `<p class="hint">${faltam === 1 ? 'Falta 1 ancestral' : `Faltam ${faltam} ancestrais`}. Os quadros vazios saem em branco no PDF. Para completar, abra o ancestral e informe o pai e a mãe dele.</p>` : ''}
+    <p class="hint">Toque em um ancestral para editar os dados dele${faltam ? `, ou em "Cadastrar" para preencher um quadro vazio. ${faltam === 1 ? 'Falta 1 ancestral' : `Faltam ${faltam} ancestrais`}; os quadros vazios saem em branco no PDF` : ''}.</p>
     ${geracoes}`;
   return shell('pedigree', 'Pedigree', anilha(p) + (p.nome ? ' · ' + p.nome : ''), corpo, { voltar: '#/pedigree' });
 }
@@ -802,6 +821,97 @@ async function gerarPedigreePDF(id, textoPrincipal, incluirFotos) {
   doc.save(arquivo);
 }
 
+// ----- Administrador (só aparece para quem está na tabela administradores) -----
+const dataHora = t => t ? new Date(t).toLocaleDateString('pt-BR') : '—';
+const tamanho = b => b >= 1048576 ? num(b / 1048576, 1) + ' MB' : num(Math.round((b || 0) / 1024)) + ' KB';
+
+async function carregarAdmin(r) {
+  if (!state.admin) return;
+  const a = state.adm;
+  if (!a.carregado) {
+    const [res, us] = await Promise.all([sb.rpc('admin_resumo'), sb.rpc('admin_usuarios')]);
+    const err = res.error || us.error;
+    if (err) { a.erro = faltaSQL(err.message) ? 'Falta rodar o arquivo 04_admin.sql no Supabase.' : traduzir(err.message); return; }
+    Object.assign(a, { carregado: true, erro: null, resumo: res.data, usuarios: us.data || [] });
+  }
+  if (r.a === 'usuario' && r.b && !a.plantel[r.b]) {
+    const { data, error } = await sb.rpc('admin_plantel_do_usuario', { p_usuario: r.b });
+    a.plantel[r.b] = error ? { erro: traduzir(error.message) } : { lista: data || [] };
+  }
+  if (!r.a && a.aba === 'pombos' && !a.pombos) await buscarPombosAdmin();
+}
+
+async function buscarPombosAdmin() {
+  const a = state.adm;
+  const { data, error } = await sb.rpc('admin_pombos', { p_busca: a.busca, p_limite: 200 });
+  a.pombos = error ? { erro: traduzir(error.message) } : { lista: data || [] };
+}
+
+function itemUsuarioAdmin(u) {
+  const titulo = u.nome_pombal || u.nome || u.email;
+  const linha2 = [u.nome_pombal && u.nome, u.email, u.cidade].filter(Boolean).join(' · ');
+  return `<li><a class="adm-item" href="#/admin/usuario/${u.id}">
+    <span class="body"><b>${esc(titulo)}</b><span class="meta">${esc(linha2)}</span>
+    <span class="meta">Desde ${dataHora(u.criado_em)} · último acesso ${dataHora(u.ultimo_acesso)}</span></span>
+    <span class="side"><span class="tag ${u.ativos ? 'ok' : ''}">${num(u.ativos)} no pombal</span>${u.admin ? '<span class="tag">Admin</span>' : ''}${u.confirmado ? '' : '<span class="tag">E-mail não confirmado</span>'}</span>
+  </a></li>`;
+}
+
+function listaUsuariosAdminHtml() {
+  const q = state.adm.busca.trim().toLowerCase();
+  const l = state.adm.usuarios.filter(u => !q || [u.email, u.nome, u.nome_pombal, u.cidade, u.telefone].some(v => v && v.toLowerCase().includes(q)));
+  return l.length ? l.map(itemUsuarioAdmin).join('') : '<li class="empty">Nenhum usuário encontrado.</li>';
+}
+
+function listaPombosAdminHtml() {
+  const p = state.adm.pombos;
+  if (!p) return `<li>${carregandoHtml}</li>`;
+  if (p.erro) return `<li><p class="msg erro">${esc(p.erro)}</p></li>`;
+  if (!p.lista.length) return '<li class="empty">Nenhum pombo encontrado.</li>';
+  return p.lista.map(x => `<li><div class="bird ${sexoCls(x.sexo)}"><span class="sexbar"></span>
+    <span class="body"><span class="ring">${esc(x.anilha)}</span><span class="name">${esc(x.nome || 'Sem nome')}${x.cor ? ` · <span class="cor">${esc(x.cor)}</span>` : ''}</span>
+    <span class="meta">${x.com_quem ? 'Com ' + esc(x.com_quem) : 'Sem pombal ativo'} · ${num(x.pombais)} ${x.pombais === 1 ? 'pombal' : 'pombais'}${x.fotos ? ` · ${x.fotos} foto${x.fotos > 1 ? 's' : ''}` : ''}</span></span>
+    <span class="side"><span class="sexsym ${sexoCls(x.sexo)}">${sym(x.sexo)}</span></span></div></li>`).join('') + (p.lista.length >= 200 ? '<li class="hint">Mostrando os 200 mais recentes. Use a busca para achar outros.</li>' : '');
+}
+
+function vAdmin(r) {
+  if (!state.admin) return shell('admin', 'Administrador', '', '<p class="msg erro">Acesso restrito ao administrador do app.</p>');
+  const a = state.adm;
+  if (a.erro) return shell('admin', 'Administrador', '', `<p class="msg erro">${esc(a.erro)}</p>`);
+  if (!a.carregado) return shell('admin', 'Administrador', '', carregandoHtml);
+  if (r.a === 'usuario') {
+    const u = a.usuarios.find(x => x.id === r.b);
+    if (!u) return shell('admin', 'Usuário', '', '<p class="msg erro">Usuário não encontrado.</p>', { voltar: '#/admin' });
+    const pl = a.plantel[r.b];
+    const dados = [['E-mail', u.email], ['Nome', u.nome], ['Pombal', u.nome_pombal], ['Cidade', u.cidade], ['Telefone', u.telefone],
+      ['Conta criada em', dataHora(u.criado_em)], ['Último acesso', dataHora(u.ultimo_acesso)], ['E-mail confirmado', u.confirmado ? 'Sim' : 'Não'],
+      ['Pombos no pombal', num(u.ativos)], ['Total no plantel (com ancestrais)', num(u.no_plantel)], ['Registros no histórico', num(u.registros)]];
+    const lista = !pl ? carregandoHtml : pl.erro ? `<p class="msg erro">${esc(pl.erro)}</p>` : pl.lista.length
+      ? `<ul class="list grade">${pl.lista.map(x => `<li><div class="bird ${sexoCls(x.sexo)}"><span class="sexbar"></span><span class="body"><span class="ring">${esc(x.anilha)}</span><span class="name">${esc(x.nome || 'Sem nome')}${x.cor ? ` · <span class="cor">${esc(x.cor)}</span>` : ''}</span></span><span class="side"><span class="tag ${x.situacao === 'ativo' ? 'ok' : ''}">${SIT[x.situacao]}</span></span></div></li>`).join('')}</ul>`
+      : '<p class="hint">Nenhum pombo cadastrado.</p>';
+    return shell('admin', u.nome_pombal || u.nome || u.email, 'Usuário do app', `
+      <dl class="adm-dados">${dados.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v || '—')}</dd></div>`).join('')}</dl>
+      <section class="section"><h2>Plantel</h2>${lista}</section>`, { voltar: '#/admin' });
+  }
+  const s = a.resumo || {};
+  const card = (n, rot, extra) => `<div class="adm-card"><b>${num(n || 0)}</b><span>${rot}</span>${extra ? `<small>${extra}</small>` : ''}</div>`;
+  const chip = (v, l) => `<button type="button" class="chip" data-adm-aba="${v}" aria-pressed="${a.aba === v}">${l}</button>`;
+  const usuarios = a.aba === 'usuarios';
+  return shell('admin', 'Administrador', 'Visão geral do app', `
+    <div class="adm-cards">
+      ${card(s.usuarios, 'usuários', `${num(s.novos_7d || 0)} novos em 7 dias · ${num(s.novos_30d || 0)} em 30`)}
+      ${card(s.ativos_30d, 'entraram nos últimos 30 dias', `${num(s.confirmados || 0)} com e-mail confirmado`)}
+      ${card(s.pombais, 'pombais com nome', `${num(s.com_pombos || 0)} usuários com pombos`)}
+      ${card(s.pombos, 'pombos no app', `${num(s.pombos_ativos || 0)} em algum pombal`)}
+      ${card(s.registros, 'registros no histórico', `${num(s.provas || 0)} provas`)}
+      ${card(s.fotos, 'fotos', `${tamanho(s.fotos_bytes)} de 1 GB grátis`)}
+    </div>
+    <div class="chips">${chip('usuarios', 'Usuários e pombais')}${chip('pombos', 'Pombos')}</div>
+    <div class="search">${I.search}<input class="input" id="q-adm" type="search" placeholder="${usuarios ? 'Buscar por e-mail, nome, pombal ou cidade' : 'Buscar por anilha, nome ou cor'}" value="${esc(a.busca)}" aria-label="Buscar"></div>
+    <ul class="list ${usuarios ? 'adm-lista' : 'grade'}" id="lista-adm">${usuarios ? listaUsuariosAdminHtml() : listaPombosAdminHtml()}</ul>
+    <button type="button" class="btn btn-ghost" data-adm-atualizar>Atualizar números</button>`);
+}
+
 function vConta() {
   const p = state.perfil || {};
   const erro = state.perfilErro ? `<p class="msg erro full" role="alert">${esc(state.perfilErro)}</p>` : '';
@@ -831,6 +941,7 @@ function render() {
   const r = rota();
   let html;
   if (r.nome === 'conta') html = vConta();
+  else if (r.nome === 'admin') html = vAdmin(r);
   else if (r.nome === 'pedigree') html = vPedigree(r.a);
   else if (r.nome === 'pombo') html = vFicha(r.a);
   else if (r.nome === 'novo') html = state.dados.carregado ? vFormPombo(null, r.q) : shell('novo', 'Cadastrar pombo', '', erroDados() || carregandoHtml, { voltar: '#/plantel' });
@@ -850,7 +961,7 @@ const faltaSQL = m => /relation|schema cache|does not exist|could not find the f
 
 async function carregarPerfil() {
   state.perfilErro = null;
-  if (!state.session) { state.perfil = null; return; }
+  if (!state.session) { state.perfil = null; state.admin = false; return; }
   const { data, error } = await sb.from('perfis').select('*').eq('id', state.session.user.id).maybeSingle();
   if (error) {
     state.perfil = null;
@@ -860,6 +971,8 @@ async function carregarPerfil() {
     return;
   }
   state.perfil = data;
+  const adm = await sb.rpc('sou_admin');
+  state.admin = !adm.error && adm.data === true;
 }
 
 async function carregarPlantel() {
@@ -894,6 +1007,7 @@ async function carregarFicha(id) {
 // Carrega o que a tela atual precisa e redesenha.
 async function abrirRota() {
   const r = rota();
+  if (r.nome === 'admin') { await carregarAdmin(r); render(); return; }
   if (!state.dados.carregado && !state.dados.erro) { await carregarPlantel(); }
   let pid = null;
   if (r.nome === 'pombo' || r.nome === 'evento') pid = r.a;
@@ -909,10 +1023,12 @@ async function recarregarTudo(pid) {
 
 // ---------- Eventos ----------
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-foto-remover],[data-pdf],[data-auth],[data-sair],[data-filtro],[data-hist],[data-sexo],[data-remover],[data-apagar-evento]');
+  const t = e.target.closest('[data-adm-aba],[data-adm-atualizar],[data-foto-remover],[data-pdf],[data-auth],[data-sair],[data-filtro],[data-hist],[data-sexo],[data-remover],[data-apagar-evento]');
   if (!t) return;
   const d = t.dataset;
   if (d.fotoRemover) { removerFoto(t); return; }
+  if (d.admAba) { state.adm.aba = d.admAba; state.adm.busca = ''; render(); if (d.admAba === 'pombos' && !state.adm.pombos) { await buscarPombosAdmin(); render(); } return; }
+  if (t.hasAttribute('data-adm-atualizar')) { state.adm = Object.assign(state.adm, { carregado: false, pombos: null, plantel: {} }); render(); await abrirRota(); toast('Números atualizados.'); return; }
   if (d.pdf) {
     const rotulo = t.innerHTML;
     t.disabled = true; t.textContent = 'Gerando PDF…';
@@ -961,6 +1077,11 @@ document.addEventListener('click', async e => {
 
 document.addEventListener('input', e => {
   if (e.target.id === 'q') { state.q = e.target.value; $('#lista').innerHTML = listaHtml(); }
+  if (e.target.id === 'q-adm') {
+    state.adm.busca = e.target.value;
+    if (state.adm.aba === 'usuarios') $('#lista-adm').innerHTML = listaUsuariosAdminHtml();
+    else { clearTimeout(buscaAdmT); buscaAdmT = setTimeout(async () => { await buscarPombosAdmin(); if ($('#lista-adm')) $('#lista-adm').innerHTML = listaPombosAdminHtml(); }, 350); }
+  }
   if (e.target.id === 'q-ped') { state.q = e.target.value; $('#lista-ped').innerHTML = listaPedigreeHtml(); }
   if (['f-num', 'f-ano', 'f-pais'].includes(e.target.id)) verificarAnilha();
 });
@@ -1008,15 +1129,44 @@ async function salvarPombo(form) {
   const btn = form.querySelector('[type=submit]');
   const rotulo = btn.textContent;
   btn.disabled = true; btn.textContent = 'Salvando…';
-  const { data, error } = await sb.rpc('salvar_pombo', { d: dados });
-  if (error) {
+  const falhou = msg => {
     btn.disabled = false; btn.textContent = rotulo;
-    return mostrarErro('#f-erro', faltaSQL(error.message) ? 'O banco de dados ainda não tem o plantel: falta rodar o arquivo 02_plantel_historico.sql no Supabase.' : traduzir(error.message));
+    return mostrarErro('#f-erro', faltaSQL(msg) ? 'O banco de dados ainda não tem o plantel: falta rodar o arquivo 02_plantel_historico.sql no Supabase.' : traduzir(msg));
+  };
+  // Cadastro de ancestral pelo pedigree: primeiro liga a anilha ao filho, depois grava os dados do ancestral.
+  const filhoId = v('#f-filho');
+  if (filhoId) {
+    const f = pombo(filhoId), lado = v('#f-lado') === 'mae' ? 'mae' : 'pai';
+    if (!f) return falhou('O pombo filho não foi encontrado. Volte ao pedigree e tente de novo.');
+    const regF = meuRegistro(filhoId);
+    const anel = x => x ? { numero: x.numero, ano: String(x.ano), pais: x.pais } : null;
+    const ligar = {
+      plantel_id: regF ? regF.id : null, numero: f.numero, ano: String(f.ano), pais: f.pais,
+      nome: f.nome || '', sexo: f.sexo || '', cor: f.cor || '', nascimento: f.nascimento || '',
+      pai: lado === 'pai' ? { numero: dados.numero, ano: dados.ano, pais: dados.pais } : anel(pombo(f.pai_id)),
+      mae: lado === 'mae' ? { numero: dados.numero, ano: dados.ano, pais: dados.pais } : anel(pombo(f.mae_id)),
+      situacao: regF ? regF.situacao : 'referencia',
+      origem: regF ? regF.origem || '' : '', origem_obs: regF ? regF.origem_obs || '' : '',
+      data_entrada: regF ? regF.data_entrada || '' : '', data_saida: regF ? regF.data_saida || '' : '',
+      saida_obs: regF ? regF.saida_obs || '' : '', observacoes: regF ? regF.observacoes || '' : ''
+    };
+    const lig = await sb.rpc('salvar_pombo', { d: ligar });
+    if (lig.error) return falhou(lig.error.message);
+    if ((lig.data.ignorados || []).includes(lado)) return falhou(`Não foi possível ligar: o pombo ${anilha(f)} está no pombal de outro criador, e só ele pode mudar os pais.`);
+    await carregarPlantel();
+    const novo = pombo(lado === 'pai' ? pombo(filhoId).pai_id : pombo(filhoId).mae_id);
+    const regNovo = novo && meuRegistro(novo.id);
+    if (regNovo) dados.plantel_id = regNovo.id;
   }
+  const { data, error } = await sb.rpc('salvar_pombo', { d: dados });
+  if (error) return falhou(error.message);
   await recarregarTudo(data.pombo_id);
-  location.hash = '#/pombo/' + data.pombo_id;
+  const volta = v('#f-volta');
+  if (volta) state.ficha = { id: null };
+  location.hash = volta ? '#/' + volta : '#/pombo/' + data.pombo_id;
   const ign = (data.ignorados || []).map(c => CAMPOS[c] || c);
   if (ign.length) toast(`Salvo. Não mudamos ${ign.join(', ')}: o pombo já tinha esses dados e só quem está com ele pode alterar.`);
+  else if (filhoId) toast('Ancestral cadastrado e ligado no pedigree.');
   else toast(dados.plantel_id ? 'Alterações salvas.' : data.ja_existia ? 'Pombo cadastrado. O histórico dele já está disponível.' : 'Pombo cadastrado.');
 }
 
@@ -1125,6 +1275,7 @@ sb.auth.onAuthStateChange((event, session) => {
     if (mudouUsuario) {
       state.dados = { carregado: false, erro: null, plantel: [], pombos: new Map() };
       state.ficha = { id: null };
+      state.adm = { carregado: false, erro: null, resumo: null, usuarios: [], aba: 'usuarios', busca: '', pombos: null, plantel: {} };
       await carregarPerfil();
       if (session) { render(); await abrirRota(); return; }
     }
