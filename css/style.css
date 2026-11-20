@@ -18,14 +18,18 @@
 
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
+/* Celular: não deixar o navegador aumentar o texto sozinho */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body { background: var(--bg); color: var(--fg); font-family: var(--f-body); font-size: 15px; line-height: 1.45; }
 button, input, select, textarea { font: inherit; color: inherit; }
+/* iPhone dá zoom ao tocar em campos com letra menor que 16px: mantém 16px */
+input, select, textarea { font-size: 16px; }
 button { cursor: pointer; }
 button:disabled { opacity: .6; cursor: wait; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 [hidden] { display: none !important; }
 
-.app { max-width: 440px; margin: 0 auto; min-height: 100%; background: var(--bg); position: relative; padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+.app { max-width: 440px; margin: 0 auto; min-height: 100%; overflow-x: clip; background: var(--bg); position: relative; padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
 .app.sem-abas { padding-bottom: 0; }
 @media (min-width: 600px) { .app { border-left: 1px solid var(--line); border-right: 1px solid var(--line); } }
 .wrap { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
