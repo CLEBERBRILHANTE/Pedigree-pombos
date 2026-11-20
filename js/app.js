@@ -113,7 +113,11 @@ function shell(rota, titulo, sub, corpo) {
   const aba = (r, ico, label) => `<a href="#/${r}" ${rota === r ? 'aria-current="page"' : ''}>${ico}<span>${label}</span></a>`;
   return `<header class="topbar wrap"><h1>${esc(titulo)}${sub ? `<span class="sub">${esc(sub)}</span>` : ''}</h1></header>
   <main class="view wrap"><div class="stack">${corpo}${credito()}</div></main>
-  <nav class="tabbar" aria-label="Menu">${aba('plantel', I.list, 'Plantel')}${aba('pedigree', I.tree, 'Pedigree')}${aba('conta', I.user, 'Meu pombal')}</nav>`;
+  <nav class="tabbar" aria-label="Menu">
+    <a class="nav-brand" href="#/plantel"><img src="img/icone.svg" alt=""><span>${esc(C.nomeApp)}</span></a>
+    ${aba('plantel', I.list, 'Plantel')}${aba('pedigree', I.tree, 'Pedigree')}${aba('conta', I.user, 'Meu pombal')}
+    <p class="nav-credit">App desenvolvido por<br><b>${esc(C.criador)}</b></p>
+  </nav>`;
 }
 
 const nomePombal = () => (state.perfil && state.perfil.nome_pombal) || 'Meu pombal';
@@ -136,21 +140,21 @@ function vPedigree() {
 
 function vConta() {
   const p = state.perfil || {};
-  const erro = state.perfilErro ? `<p class="msg erro" role="alert">${esc(state.perfilErro)}</p>` : '';
+  const erro = state.perfilErro ? `<p class="msg erro full" role="alert">${esc(state.perfilErro)}</p>` : '';
   const email = state.session && state.session.user.email;
   return shell('conta', 'Meu pombal', 'Conta e dados do pedigree', `
-    <form id="f-perfil" class="stack" style="padding:0">
+    <form id="f-perfil" class="form-grid">
       ${erro}
-      <p class="hint">Estes dados vão aparecer no cabeçalho dos pedigrees que você emitir.</p>
+      <p class="hint full">Estes dados vão aparecer no cabeçalho dos pedigrees que você emitir.</p>
       <div class="field"><label for="p-nome">Seu nome</label><input class="input" id="p-nome" value="${esc(p.nome)}" autocomplete="name"></div>
       <div class="field"><label for="p-pombal">Nome do pombal</label><input class="input" id="p-pombal" value="${esc(p.nome_pombal)}"></div>
-      <div class="field"><label for="p-cidade">Cidade, estado e país</label><input class="input" id="p-cidade" value="${esc(p.cidade)}" placeholder="Ex.: Campinas - SP - Brasil"></div>
+      <div class="field full"><label for="p-cidade">Cidade, estado e país</label><input class="input" id="p-cidade" value="${esc(p.cidade)}" placeholder="Ex.: Campinas - SP - Brasil"></div>
       <div class="field"><label for="p-email">E-mail de contato</label><input class="input" id="p-email" type="email" value="${esc(p.email_contato)}"></div>
       <div class="field"><label for="p-tel">Telefone / WhatsApp</label><input class="input" id="p-tel" type="tel" value="${esc(p.telefone)}"></div>
-      <button class="btn btn-primary btn-block" type="submit" ${state.ocupado ? 'disabled' : ''}>Salvar</button>
+      <button class="btn btn-primary btn-block full" type="submit" ${state.ocupado ? 'disabled' : ''}>Salvar</button>
     </form>
-    <p class="hint" style="text-align:center">Conectado como <b>${esc(email)}</b></p>
-    <button class="btn btn-ghost btn-block" type="button" data-sair>Sair da conta</button>`);
+    <div class="sessao"><p class="hint">Conectado como <b>${esc(email)}</b></p>
+    <button class="btn btn-ghost" type="button" data-sair>Sair da conta</button></div>`);
 }
 
 // ---------- Render ----------
