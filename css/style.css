@@ -256,3 +256,17 @@ a.bird:hover { border-color: var(--accent); }
   #ped-texto { max-width: 760px; }
   main.view .field:has(#ped-texto) { max-width: 760px; }
 }
+
+/* ---------- Fotos do olho e da cabeça ---------- */
+.fotos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.foto { margin: 0; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.foto figcaption { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.foto img, .foto-vazia { width: 100%; aspect-ratio: 1 / 1; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); }
+.foto img { display: block; object-fit: cover; }
+.foto-vazia { display: grid; place-content: center; justify-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; border-style: dashed; }
+.foto-vazia svg { width: 30px; height: 30px; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.foto-acoes { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.btn-sm { padding: 7px 12px; font-size: 13.5px; border-radius: 10px; cursor: pointer; }
+.check { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+.check input { width: 18px; height: 18px; }
+@media (min-width: 960px) { .fotos { max-width: 520px; } }

@@ -19,7 +19,9 @@ const state = {
   ficha: { id: null },
   q: '',
   filtro: 'todos',
-  histFiltro: 'tudo'
+  histFiltro: 'tudo',
+  fotoUrls: new Map(),    // caminho da foto -> { url, ate }
+  fotoEnviando: null      // 'olho' | 'cabeca' enquanto envia
 };
 
 // Erros que o Supabase devolve no endereço (ex.: link de e-mail vencido).
@@ -62,7 +64,8 @@ const I = {
   plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
   back: '<svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>',
   search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>',
-  edit: '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg>'
+  edit: '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg>',
+  camera: '<svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>'
 };
 
 const credito = () => `<p class="credit">${esc(C.nomeApp)} · App desenvolvido por <b>${esc(C.criador)}</b></p>`;
@@ -269,6 +272,119 @@ function historicoHtml(p) {
     ${itens.length ? `<ol class="timeline">${itens.map(itemHistorico).join('')}</ol>` : '<p class="hint">Nada registrado aqui ainda.</p>'}`;
 }
 
+// ----- Fotos do olho e da cabeça -----
+const TIPOS_FOTO = [['olho', 'Olho'], ['cabeca', 'Cabeça']];
+const urlFoto = caminho => { const u = caminho && state.fotoUrls.get(caminho); return u && u.ate > Date.now() ? u.url : null; };
+
+function fotosHtml(p, r, pronto) {
+  const pode = !!r && pronto && podeEditarDados(r);
+  const slot = (tipo, rot) => {
+    const caminho = p['foto_' + tipo], url = urlFoto(caminho), enviando = state.fotoEnviando === tipo;
+    const img = enviando ? `<div class="foto-vazia"><span>Enviando…</span></div>`
+      : url ? `<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" alt="Foto ${tipo === 'olho' ? 'do olho' : 'da cabeça'}" loading="lazy"></a>`
+      : caminho ? `<div class="foto-vazia"><span>Carregando…</span></div>`
+      : `<div class="foto-vazia">${I.camera}<span>Sem foto</span></div>`;
+    const botoes = pode && !enviando ? `<div class="foto-acoes">
+        <label class="btn btn-ghost btn-sm">${I.camera}${caminho ? 'Trocar' : 'Adicionar'}<input type="file" accept="image/*" data-foto="${tipo}" data-pombo="${esc(p.id)}" hidden></label>
+        ${caminho ? `<button type="button" class="link" data-foto-remover="${tipo}" data-pombo="${esc(p.id)}">Remover</button>` : ''}</div>` : '';
+    return `<figure class="foto"><figcaption>${rot}</figcaption>${img}${botoes}</figure>`;
+  };
+  const algum = p.foto_olho || p.foto_cabeca;
+  if (!algum && !pode) return '';
+  return `<section class="section"><h2>Fotos</h2><div class="fotos">${TIPOS_FOTO.map(([t, l]) => slot(t, l)).join('')}</div>
+    ${pode ? '<p class="hint">Tire a foto com boa luz e de perto. O app diminui a foto antes de enviar. Quem tem este pombo no plantel também vê as fotos.</p>' : ''}</section>`;
+}
+
+// Gera links temporários (1 hora) para ver as fotos, que ficam numa pasta privada.
+async function carregarUrlsFotos(caminhos) {
+  const faltam = [...new Set(caminhos.filter(c => c && !urlFoto(c)))];
+  if (!faltam.length) return;
+  const { data, error } = await sb.storage.from('fotos').createSignedUrls(faltam, 3600);
+  if (error || !data) return;
+  data.forEach(d => { if (d.signedUrl && d.path) state.fotoUrls.set(d.path, { url: d.signedUrl, ate: Date.now() + 50 * 60 * 1000 }); });
+}
+
+function abrirImagem(src) {
+  return new Promise((ok, falha) => {
+    const img = new Image();
+    img.onload = () => ok(img);
+    img.onerror = () => falha(new Error('Não consegui abrir esta imagem. Use uma foto JPG ou PNG.'));
+    img.src = src;
+  });
+}
+
+// Diminui a foto para no máximo 1280 px e comprime em JPEG (fica entre 100 e 300 KB).
+async function comprimirFoto(arquivo, max = 1280, qualidade = 0.82) {
+  let fonte, largura, altura, url;
+  try {
+    fonte = await createImageBitmap(arquivo, { imageOrientation: 'from-image' });
+    largura = fonte.width; altura = fonte.height;
+  } catch (e) {
+    url = URL.createObjectURL(arquivo);
+    try { fonte = await abrirImagem(url); } finally { URL.revokeObjectURL(url); }
+    largura = fonte.naturalWidth; altura = fonte.naturalHeight;
+  }
+  const escala = Math.min(1, max / Math.max(largura, altura));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(largura * escala); canvas.height = Math.round(altura * escala);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(fonte, 0, 0, canvas.width, canvas.height);
+  if (fonte.close) fonte.close();
+  const blob = await new Promise(ok => canvas.toBlob(ok, 'image/jpeg', qualidade));
+  if (!blob) throw new Error('Não consegui preparar a foto. Tente outra imagem.');
+  return blob;
+}
+
+function erroFoto(m) {
+  const s = String(m || '');
+  if (/bucket not found|could not find the function|definir_foto/i.test(s)) return 'O banco ainda não está pronto para fotos: falta rodar o arquivo 03_fotos.sql no Supabase.';
+  if (/row-level security|unauthorized|403/i.test(s)) return 'Só quem está com o pombo pode trocar as fotos dele.';
+  if (/payload too large|exceeded the maximum/i.test(s)) return 'A foto ficou grande demais. Tente outra.';
+  return /^(Não|Só|O banco)/.test(s) ? s : traduzir(s);
+}
+
+async function enviarFoto(input) {
+  const arquivo = input.files && input.files[0];
+  const tipo = input.dataset.foto, pid = input.dataset.pombo;
+  if (!arquivo) return;
+  if (arquivo.type && !arquivo.type.startsWith('image/')) { toast('Escolha um arquivo de imagem.'); return; }
+  state.fotoEnviando = tipo; render();
+  let caminho = null;
+  try {
+    const blob = await comprimirFoto(arquivo);
+    caminho = `${pid}/${tipo}-${Date.now()}.jpg`;
+    const up = await sb.storage.from('fotos').upload(caminho, blob, { contentType: 'image/jpeg', cacheControl: '31536000', upsert: false });
+    if (up.error) { caminho = null; throw up.error; }
+    const { data: anterior, error } = await sb.rpc('definir_foto', { p_pombo: pid, p_tipo: tipo, p_caminho: caminho });
+    if (error) throw error;
+    if (anterior && anterior !== caminho) sb.storage.from('fotos').remove([anterior]);
+    const p = pombo(pid); if (p) p['foto_' + tipo] = caminho;
+    state.fotoUrls.set(caminho, { url: URL.createObjectURL(blob), ate: Date.now() + 50 * 60 * 1000 });
+    state.fotoEnviando = null;
+    await carregarFicha(pid);
+    toast('Foto salva.');
+  } catch (err) {
+    if (caminho) sb.storage.from('fotos').remove([caminho]);
+    state.fotoEnviando = null;
+    toast(erroFoto(err.message || err));
+  }
+  render();
+}
+
+async function removerFoto(btn) {
+  const tipo = btn.dataset.fotoRemover, pid = btn.dataset.pombo;
+  if (!confirm(`Remover a foto ${tipo === 'olho' ? 'do olho' : 'da cabeça'}?`)) return;
+  btn.disabled = true;
+  const { data: anterior, error } = await sb.rpc('definir_foto', { p_pombo: pid, p_tipo: tipo, p_caminho: null });
+  if (error) { btn.disabled = false; toast(erroFoto(error.message)); return; }
+  if (anterior) sb.storage.from('fotos').remove([anterior]);
+  const p = pombo(pid); if (p) p['foto_' + tipo] = null;
+  await carregarFicha(pid);
+  render();
+  toast('Foto removida.');
+}
+
 function vFicha(id) {
   const p = pombo(id);
   const f = state.ficha;
@@ -293,6 +409,7 @@ function vFicha(id) {
     <div class="ficha-grid">
     <div class="col">
     <section class="section"><h2>Pais</h2><div class="parents">${pcard(p.pai_id, 'Pai', 'M')}${pcard(p.mae_id, 'Mãe', 'F')}</div></section>
+    ${fotosHtml(p, r, pronto)}
     ${r && r.observacoes ? `<section class="section"><h2>Minhas observações</h2><p class="obs">${esc(r.observacoes)}</p><p class="hint">Só você vê estas observações.</p></section>` : ''}
     <section class="section"><h2>Pombais por onde passou</h2>
       ${!pronto ? carregandoHtml : donos.length ? `<ul class="donos">${donos.map(d => `<li class="${d.voce ? 'voce' : ''}">
@@ -514,6 +631,7 @@ function vPedigree(id) {
     <div class="field"><label for="ped-texto">Texto no quadro do pombo</label>
       <textarea class="input" id="ped-texto" placeholder="Ex.: Pombo cedido a Fulano · Linhagem, títulos e prêmios">${esc(r && r.observacoes)}</textarea>
       <p class="hint">Vem das observações do pombo. Pode mudar aqui só para este PDF. O texto de cada ancestral vem de "Títulos e observações" na ficha dele.</p></div>
+    ${p.foto_olho || p.foto_cabeca ? `<label class="check"><input type="checkbox" id="ped-fotos" checked> Incluir no PDF as fotos ${p.foto_olho && p.foto_cabeca ? 'do olho e da cabeça' : p.foto_olho ? 'do olho' : 'da cabeça'}</label>` : ''}
     <div class="actions"><button class="btn btn-primary" type="button" data-pdf="${esc(p.id)}">${I.tree}Baixar pedigree em PDF</button><a class="btn btn-ghost" href="#/pedigree">Escolher outro pombo</a></div>
     ${faltam ? `<p class="hint">${faltam === 1 ? 'Falta 1 ancestral' : `Faltam ${faltam} ancestrais`}. Os quadros vazios saem em branco no PDF. Para completar, abra o ancestral e informe o pai e a mãe dele.</p>` : ''}
     ${geracoes}`;
@@ -542,7 +660,21 @@ const textoPdf = s => String(s ?? '').normalize('NFC')
   .replace(/…/g, '...').replace(/→/g, '->').replace(/♂/g, 'M').replace(/♀/g, 'F')
   .replace(/[^\n\x20-\x7E\xA0-\xFF]/g, '');
 
-async function gerarPedigreePDF(id, textoPrincipal) {
+async function imagensParaPdf(caminhos) {
+  await carregarUrlsFotos(caminhos);
+  return Promise.all(caminhos.map(async c => {
+    const url = urlFoto(c);
+    if (!url) return null;
+    try {
+      const blob = await (await fetch(url)).blob();
+      const dados = await new Promise((ok, falha) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = falha; fr.readAsDataURL(blob); });
+      const img = await abrirImagem(dados);
+      return { dados, w: img.naturalWidth, h: img.naturalHeight };
+    } catch (e) { return null; }
+  }));
+}
+
+async function gerarPedigreePDF(id, textoPrincipal, incluirFotos) {
   const JsPDF = await carregarJsPDF();
   const doc = new JsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
   const pos = arvore(id);
@@ -632,6 +764,30 @@ async function gerarPedigreePDF(id, textoPrincipal) {
       }
     }
     linhas.forEach(l => { ty += lh; doc.text(l, b.x + pad, ty - lh * 0.25); });
+  }
+
+  // Fotos do olho e da cabeça na coluna do pombo (acima e abaixo do quadro)
+  if (incluirFotos) {
+    const b = caixa(1);
+    const fotos = await imagensParaPdf([alvo.foto_olho, alvo.foto_cabeca]);
+    const lugares = [
+      { foto: fotos[0], rot: 'Olho', yMin: topo, yMax: b.y - 3, emCima: true },
+      { foto: fotos[1], rot: 'Cabeça', yMin: b.y + b.h + 3, yMax: base, emCima: false }
+    ];
+    lugares.forEach(l => {
+      if (!l.foto) return;
+      const maxW = b.w, maxH = Math.min(44, l.yMax - l.yMin - 4);
+      if (maxH < 10) return;
+      const esc_ = Math.min(maxW / l.foto.w, maxH / l.foto.h);
+      const w = l.foto.w * esc_, h = l.foto.h * esc_;
+      const x = b.x + (b.w - w) / 2;
+      const y = l.emCima ? l.yMax - h : l.yMin + 4;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5); doc.setTextColor(90, 90, 90);
+      doc.text(textoPdf(l.rot), b.x, y - 1.2);
+      doc.addImage(l.foto.dados, 'JPEG', x, y, w, h);
+      doc.setDrawColor(70, 70, 70); doc.setLineWidth(0.25); doc.rect(x, y, w, h);
+    });
+    doc.setTextColor(0, 0, 0);
   }
 
   // Rodapé discreto
@@ -728,6 +884,8 @@ async function carregarFicha(id) {
     sb.rpc('donos_do_pombo', { p: id }),
     sb.rpc('filhos_do_pombo', { p: id })
   ]);
+  const p = pombo(id);
+  if (p) await carregarUrlsFotos([p.foto_olho, p.foto_cabeca]);
   if (state.ficha.id !== id) return;
   const err = ev.error || dn.error || fl.error;
   state.ficha = { id, carregando: false, erro: err ? traduzir(err.message) : null, eventos: ev.data || [], donos: dn.data || [], filhos: fl.data || [] };
@@ -751,13 +909,14 @@ async function recarregarTudo(pid) {
 
 // ---------- Eventos ----------
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-pdf],[data-auth],[data-sair],[data-filtro],[data-hist],[data-sexo],[data-remover],[data-apagar-evento]');
+  const t = e.target.closest('[data-foto-remover],[data-pdf],[data-auth],[data-sair],[data-filtro],[data-hist],[data-sexo],[data-remover],[data-apagar-evento]');
   if (!t) return;
   const d = t.dataset;
+  if (d.fotoRemover) { removerFoto(t); return; }
   if (d.pdf) {
     const rotulo = t.innerHTML;
     t.disabled = true; t.textContent = 'Gerando PDF…';
-    try { await gerarPedigreePDF(d.pdf, $('#ped-texto') ? $('#ped-texto').value.trim() : ''); toast('Pedigree gerado.'); }
+    try { await gerarPedigreePDF(d.pdf, $('#ped-texto') ? $('#ped-texto').value.trim() : '', !!($('#ped-fotos') && $('#ped-fotos').checked)); toast('Pedigree gerado.'); }
     catch (err) { toast(err.message && /PDF/.test(err.message) ? err.message : 'Não foi possível gerar o PDF: ' + (err.message || err)); }
     t.disabled = false; t.innerHTML = rotulo;
     return;
@@ -807,6 +966,7 @@ document.addEventListener('input', e => {
 });
 
 document.addEventListener('change', e => {
+  if (e.target.matches('input[data-foto]')) enviarFoto(e.target);
   if (e.target.id === 'f-sit') ajustarCamposSituacao();
   if (e.target.id === 'e-tipo') ajustarCamposTipo();
 });
