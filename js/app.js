@@ -14,7 +14,12 @@ const state = {
   perfilErro: null,
   auth: 'entrar',         // entrar | criar | esqueci | novaSenha
   authMsg: null,          // { tipo: 'erro' | 'ok', texto }
-  ocupado: false
+  ocupado: false,
+  dados: { carregado: false, erro: null, plantel: [], pombos: new Map() },
+  ficha: { id: null },
+  q: '',
+  filtro: 'todos',
+  histFiltro: 'tudo'
 };
 
 // Erros que o Supabase devolve no endereço (ex.: link de e-mail vencido).
@@ -53,7 +58,11 @@ function traduzir(m) {
 const I = {
   list: '<svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg>',
   tree: '<svg viewBox="0 0 24 24"><rect x="2" y="9" width="6" height="6" rx="1"/><rect x="16" y="3" width="6" height="5" rx="1"/><rect x="16" y="16" width="6" height="5" rx="1"/><path d="M8 12h4M12 5.5v13M12 5.5h4M12 18.5h4"/></svg>',
-  user: '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>'
+  user: '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>',
+  plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+  back: '<svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>',
+  search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>',
+  edit: '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg>'
 };
 
 const credito = () => `<p class="credit">${esc(C.nomeApp)} · App desenvolvido por <b>${esc(C.criador)}</b></p>`;
@@ -93,7 +102,7 @@ function vAuth() {
       <div class="field"><label for="a-email">E-mail</label><input class="input" id="a-email" type="email" required autocomplete="email"></div>
       <div class="field"><label for="a-senha">Senha</label><input class="input" id="a-senha" type="password" minlength="6" required autocomplete="${criar ? 'new-password' : 'current-password'}"></div>
       <button class="btn btn-primary btn-block" type="submit" ${dis}>${state.ocupado ? 'Aguarde…' : criar ? 'Criar conta' : 'Entrar'}</button>
-      ${criar ? '<p class="hint">A senha precisa ter pelo menos 6 caracteres. Cada conta vê só os próprios pombos.</p>' : '<button type="button" class="link" data-auth="esqueci">Esqueci minha senha</button>'}
+      ${criar ? '<p class="hint">A senha precisa ter pelo menos 6 caracteres. Seu plantel é só seu; o histórico de cada pombo é compartilhado com quem tiver a mesma anilha.</p>' : '<button type="button" class="link" data-auth="esqueci">Esqueci minha senha</button>'}
     </form>`;
   }
   return `<div class="wrap login view">
@@ -104,38 +113,336 @@ function vAuth() {
 }
 
 // ---------- Telas internas ----------
-function rotaAtual() {
-  const r = location.hash.replace(/^#\/?/, '').split(/[?&]/)[0];
-  return ['plantel', 'pedigree', 'conta'].includes(r) ? r : 'plantel';
+const PAISES = ['BRA', 'ARG', 'URU', 'PAR', 'BEL', 'ALE', 'HOL', 'POR', 'FRA', 'ESP', 'ITA', 'ING', 'POL', 'CHN', 'USA'];
+const CORES = ['Azul barrado', 'Azul xadrez', 'Azul mosqueado', 'Ardósia', 'Vermelho', 'Vermelho xadrez', 'Mosqueado', 'Preto', 'Branco', 'Pintado', 'Fumaça'];
+const SIT = { ativo: 'No pombal', referencia: 'Ancestral', vendido: 'Vendido', cedido: 'Cedido', perdido: 'Perdido', morto: 'Morreu' };
+const SIT_FORM = [['ativo', 'Está no meu pombal'], ['referencia', 'Ancestral (só para o pedigree)'], ['vendido', 'Vendido'], ['cedido', 'Cedido / emprestado a outro pombal'], ['perdido', 'Perdido (não voltou)'], ['morto', 'Morreu']];
+const SAIU = ['vendido', 'cedido', 'perdido', 'morto'];
+const ORIGEM = [['', 'Não informar'], ['nascido', 'Nasceu no meu pombal'], ['comprado', 'Comprado'], ['ganho', 'Ganhei de presente'], ['emprestado', 'Recebi emprestado'], ['outro', 'Outro']];
+const TIPOS = { prova: 'Prova', premio: 'Prêmio / título', saude: 'Saúde / vacina', reproducao: 'Reprodução', observacao: 'Observação', entrada: 'Entrada no pombal', saida: 'Saída do pombal', alteracao: 'Dados alterados', nascimento: 'Nascimento' };
+const TIPOS_MANUAIS = ['prova', 'premio', 'saude', 'reproducao', 'observacao'];
+
+const sexoTxt = s => s === 'F' ? 'Fêmea' : s === 'M' ? 'Macho' : 'Sexo não informado';
+const sym = s => s === 'F' ? '♀' : s === 'M' ? '♂' : '?';
+const anilha = p => p ? `${p.numero}/${String(p.ano % 100).padStart(2, '0')} ${p.pais}` : '';
+const dataBR = d => d ? d.split('-').reverse().join('/') : '';
+const num = (n, casas = 0) => Number(n).toLocaleString('pt-BR', { maximumFractionDigits: casas });
+const pombo = id => (id && state.dados.pombos.get(id)) || null;
+const meuRegistro = id => state.dados.plantel.find(r => r.pombo_id === id) || null;
+const sexoCls = s => s === 'F' ? 'f' : s === 'M' ? 'm' : 'u';
+
+// "1402317/23 BRA" -> { numero, ano, pais }
+function lerAnilha(txt) {
+  const s = String(txt || '').trim();
+  if (!s) return null;
+  const m = /^(.+?)\s*\/\s*(\d{2}|\d{4})\s*([A-Za-z]{2,4})?$/.exec(s);
+  if (!m) return { erro: `Não entendi a anilha "${s}". Escreva assim: 1402317/23 BRA` };
+  return { numero: m[1].trim(), ano: m[2], pais: (m[3] || 'BRA').toUpperCase() };
 }
 
-function shell(rota, titulo, sub, corpo) {
-  const aba = (r, ico, label) => `<a href="#/${r}" ${rota === r ? 'aria-current="page"' : ''}>${ico}<span>${label}</span></a>`;
-  return `<header class="topbar wrap"><h1>${esc(titulo)}${sub ? `<span class="sub">${esc(sub)}</span>` : ''}</h1></header>
+function rota() {
+  const h = location.hash.replace(/^#\/?/, '');
+  const [caminho, busca = ''] = h.split('?');
+  const partes = caminho.split('/').filter(Boolean);
+  const nomes = ['plantel', 'novo', 'pombo', 'editar', 'evento', 'pedigree', 'conta'];
+  const nome = nomes.includes(partes[0]) ? partes[0] : 'plantel';
+  return { nome, a: partes[1] || null, b: partes[2] || null, q: new URLSearchParams(busca) };
+}
+
+function shell(r, titulo, sub, corpo, { voltar = null, direita = '' } = {}) {
+  const ativa = ['pombo', 'editar', 'evento'].includes(r) ? 'plantel' : r;
+  const aba = (n, ico, label) => `<a href="#/${n}" ${ativa === n ? 'aria-current="page"' : ''}>${ico}<span>${label}</span></a>`;
+  return `<header class="topbar wrap">${voltar ? `<a class="icon-btn" href="${voltar}" aria-label="Voltar">${I.back}</a>` : ''}
+    <h1>${esc(titulo)}${sub ? `<span class="sub">${esc(sub)}</span>` : ''}</h1>${direita}</header>
   <main class="view wrap"><div class="stack">${corpo}${credito()}</div></main>
   <nav class="tabbar" aria-label="Menu">
     <a class="nav-brand" href="#/plantel"><img src="img/icone.svg" alt=""><span>${esc(C.nomeApp)}</span></a>
-    ${aba('plantel', I.list, 'Plantel')}${aba('pedigree', I.tree, 'Pedigree')}${aba('conta', I.user, 'Meu pombal')}
+    ${aba('plantel', I.list, 'Plantel')}${aba('novo', `<span class="plus">${I.plus}</span>`, 'Cadastrar')}${aba('pedigree', I.tree, 'Pedigree')}${aba('conta', I.user, 'Meu pombal')}
     <p class="nav-credit">App desenvolvido por<br><b>${esc(C.criador)}</b></p>
   </nav>`;
 }
 
 const nomePombal = () => (state.perfil && state.perfil.nome_pombal) || 'Meu pombal';
-const primeiroNome = () => ((state.perfil && state.perfil.nome) || '').trim().split(/\s+/)[0];
+const carregandoHtml = '<p class="hint carregando-bloco">Carregando…</p>';
+const erroDados = () => state.dados.erro ? `<p class="msg erro" role="alert">${esc(state.dados.erro)}</p>` : '';
+
+// ----- Plantel -----
+function filtrarPlantel() {
+  const q = state.q.trim().toLowerCase();
+  const f = state.filtro;
+  return state.dados.plantel.map(r => ({ r, p: pombo(r.pombo_id) })).filter(({ r, p }) => {
+    if (!p) return false;
+    if (f === 'ativo' && r.situacao !== 'ativo') return false;
+    if (f === 'M' && (p.sexo !== 'M' || r.situacao !== 'ativo')) return false;
+    if (f === 'F' && (p.sexo !== 'F' || r.situacao !== 'ativo')) return false;
+    if (f === 'referencia' && r.situacao !== 'referencia') return false;
+    if (f === 'saiu' && !SAIU.includes(r.situacao)) return false;
+    if (!q) return true;
+    const pai = pombo(p.pai_id), mae = pombo(p.mae_id);
+    return [anilha(p), p.numero, p.nome, p.cor, anilha(pai), pai && pai.nome, anilha(mae), mae && mae.nome]
+      .some(v => v && String(v).toLowerCase().includes(q));
+  }).sort((x, y) => ((y.r.situacao === 'ativo') - (x.r.situacao === 'ativo')) || (y.p.ano - x.p.ano) || x.p.numero.localeCompare(y.p.numero, 'pt-BR', { numeric: true }));
+}
+
+function itemPombo(p, r) {
+  const pai = pombo(p.pai_id), mae = pombo(p.mae_id);
+  const tag = r ? `<span class="tag ${r.situacao === 'ativo' ? 'ok' : ''}">${SIT[r.situacao]}</span>` : '';
+  return `<li><a class="bird ${sexoCls(p.sexo)}" href="#/pombo/${p.id}">
+    <span class="sexbar"></span>
+    <span class="body"><span class="ring">${esc(anilha(p))}</span>
+      <span class="name">${esc(p.nome || 'Sem nome')}${p.cor ? ` · <span class="cor">${esc(p.cor)}</span>` : ''}</span>
+      <span class="meta">Pai <span class="mono">${pai ? esc(anilha(pai)) : '—'}</span> · Mãe <span class="mono">${mae ? esc(anilha(mae)) : '—'}</span></span></span>
+    <span class="side"><span class="sexsym ${sexoCls(p.sexo)}" title="${sexoTxt(p.sexo)}">${sym(p.sexo)}</span>${tag}</span>
+  </a></li>`;
+}
+
+function listaHtml() {
+  const l = filtrarPlantel();
+  return l.length ? l.map(({ r, p }) => itemPombo(p, r)).join('') : '<li class="empty">Nenhum pombo encontrado.</li>';
+}
 
 function vPlantel() {
-  const ola = primeiroNome() ? `Olá, ${esc(primeiroNome())}!` : 'Olá!';
-  return shell('plantel', 'Plantel', nomePombal(), `
-    <p class="boasvindas">${ola} Sua conta está pronta.</p>
-    <div class="vazio">${I.list}<h2>Cadastro de pombos em breve</h2>
-      <p>A próxima etapa do app traz o cadastro do plantel: anilha, nome, sexo, cor, pai e mãe.</p></div>
-    <a class="btn btn-ghost btn-block" href="#/conta">Preencher dados do meu pombal</a>`);
+  const novo = `<a class="icon-btn" href="#/novo" aria-label="Cadastrar pombo">${I.plus}</a>`;
+  if (!state.dados.carregado) return shell('plantel', 'Plantel', nomePombal(), erroDados() || carregandoHtml, { direita: novo });
+  const todos = state.dados.plantel;
+  if (!todos.length) {
+    return shell('plantel', 'Plantel', nomePombal(), `${erroDados()}
+      <div class="vazio">${I.list}<h2>Nenhum pombo ainda</h2>
+        <p>Cadastre seu primeiro pombo pela anilha. Se ele já passou por outro pombal que usa o app, o histórico dele aparece na hora.</p>
+        <a class="btn btn-primary" href="#/novo">${I.plus}Cadastrar pombo</a></div>`, { direita: novo });
+  }
+  const ativos = todos.filter(r => r.situacao === 'ativo').map(r => pombo(r.pombo_id)).filter(Boolean);
+  const chip = (v, l) => `<button type="button" class="chip" data-filtro="${v}" aria-pressed="${state.filtro === v}">${l}</button>`;
+  return shell('plantel', 'Plantel', nomePombal(), `${erroDados()}
+    <div class="stats"><span><b>${ativos.length}</b> no pombal</span><span><b>${ativos.filter(p => p.sexo === 'M').length}</b> machos</span><span><b>${ativos.filter(p => p.sexo === 'F').length}</b> fêmeas</span><span><b>${todos.length}</b> no total</span></div>
+    <div class="search">${I.search}<input class="input" id="q" type="search" placeholder="Buscar por anilha, nome, cor ou pais" value="${esc(state.q)}" aria-label="Buscar"></div>
+    <div class="chips">${chip('todos', 'Todos')}${chip('ativo', 'No pombal')}${chip('M', '♂ Machos')}${chip('F', '♀ Fêmeas')}${chip('referencia', 'Ancestrais')}${chip('saiu', 'Saíram')}</div>
+    <ul class="list" id="lista">${listaHtml()}</ul>`, { direita: novo });
+}
+
+// ----- Ficha do pombo -----
+function pcard(id, rot, sexo) {
+  const p = pombo(id);
+  if (!p) return `<div class="pcard unknown ${sexo === 'F' ? 'f' : ''}"><small>${rot}</small><span>Não informado</span></div>`;
+  return `<a class="pcard ${sexo === 'F' ? 'f' : ''}" href="#/pombo/${p.id}"><small>${rot}</small><span class="mono">${esc(anilha(p))}</span><span>${esc(p.nome || p.cor || '')}</span></a>`;
+}
+
+function linhaProva(e) {
+  const partes = [];
+  if (e.colocacao) partes.push(`<b>${num(e.colocacao)}º</b>${e.participantes ? ` de ${num(e.participantes)} pombos` : ''}`);
+  else if (e.participantes) partes.push(`${num(e.participantes)} pombos`);
+  if (e.distancia_km) partes.push(`${num(e.distancia_km, 1)} km`);
+  if (e.velocidade) partes.push(`${num(e.velocidade, 3)} m/min`);
+  return partes.join(' · ');
+}
+
+function itemHistorico(e) {
+  const meu = e.autor_id && state.session && e.autor_id === state.session.user.id;
+  const editavel = meu && TIPOS_MANUAIS.includes(e.tipo);
+  const prova = e.tipo === 'prova';
+  const titulo = prova ? (e.prova_nome || 'Prova') : e.tipo === 'nascimento' ? 'Nasceu' : (e.descricao || TIPOS[e.tipo]);
+  const autor = !e.autor_pombal ? '' : ['entrada', 'saida'].includes(e.tipo) ? e.autor_pombal : 'Registrado por ' + e.autor_pombal;
+  return `<li class="ev ev-${e.tipo}">
+    <span class="ev-dot"></span>
+    <div class="ev-body">
+      <div class="ev-top"><span class="ev-data">${e.data ? dataBR(e.data) : 'Sem data'}</span><span class="ev-tipo">${esc(TIPOS[e.tipo])}</span></div>
+      <p class="ev-tit">${esc(titulo)}</p>
+      ${prova && linhaProva(e) ? `<p class="ev-prova">${linhaProva(e)}</p>` : ''}
+      ${prova && e.descricao ? `<p class="ev-desc">${esc(e.descricao)}</p>` : ''}
+      ${autor ? `<p class="ev-autor">${esc(autor)}${meu ? ' (você)' : ''}</p>` : ''}
+      ${editavel ? `<a class="link" href="#/evento/${e.pombo_id}/${e.id}">Editar</a>` : ''}
+    </div></li>`;
+}
+
+function historicoHtml(p) {
+  const f = state.ficha;
+  let itens = f.eventos.slice();
+  if (p.nascimento && !itens.some(e => e.tipo === 'entrada' && /^Nasceu/.test(e.descricao || ''))) itens.unshift({ id: 'nasc', tipo: 'nascimento', data: p.nascimento, descricao: '' });
+  itens.sort((a, b) => (a.data || '9999').localeCompare(b.data || '9999') || String(a.criado_em || '').localeCompare(String(b.criado_em || '')));
+  const provas = f.eventos.filter(e => e.tipo === 'prova');
+  const melhor = provas.filter(e => e.colocacao).reduce((m, e) => Math.min(m, e.colocacao), Infinity);
+  const filtros = { tudo: () => true, provas: e => e.tipo === 'prova' || e.tipo === 'premio', saude: e => e.tipo === 'saude', pombais: e => ['nascimento', 'entrada', 'saida'].includes(e.tipo) };
+  itens = itens.filter(filtros[state.histFiltro] || filtros.tudo);
+  const chip = (v, l) => `<button type="button" class="chip" data-hist="${v}" aria-pressed="${state.histFiltro === v}">${l}</button>`;
+  return `${provas.length ? `<p class="resumo"><b>${provas.length}</b> ${provas.length === 1 ? 'prova' : 'provas'}${melhor < Infinity ? ` · melhor colocação <b>${melhor}º</b>` : ''}</p>` : ''}
+    <div class="chips">${chip('tudo', 'Tudo')}${chip('provas', 'Provas e prêmios')}${chip('saude', 'Saúde')}${chip('pombais', 'Pombais')}</div>
+    ${itens.length ? `<ol class="timeline">${itens.map(itemHistorico).join('')}</ol>` : '<p class="hint">Nada registrado aqui ainda.</p>'}`;
+}
+
+function vFicha(id) {
+  const p = pombo(id);
+  const f = state.ficha;
+  if (!state.dados.carregado) return shell('pombo', 'Pombo', '', erroDados() || carregandoHtml, { voltar: '#/plantel' });
+  if (!p) return shell('pombo', 'Pombo', '', `<div class="vazio"><h2>Pombo não encontrado</h2><p>Ele não está no seu plantel nem entre os ancestrais dos seus pombos.</p><a class="btn btn-ghost" href="#/plantel">Voltar ao plantel</a></div>`, { voltar: '#/plantel' });
+  const r = meuRegistro(id);
+  const ano = p.nascimento ? dataBR(p.nascimento) : String(p.ano);
+  const acoes = r
+    ? `<a class="btn btn-primary" href="#/evento/${p.id}">${I.plus}Registrar no histórico</a><a class="btn btn-ghost" href="#/editar/${r.id}">${I.edit}Editar</a>`
+    : `<a class="btn btn-primary" href="#/novo?anilha=${encodeURIComponent(anilha(p))}&situacao=referencia">${I.plus}Adicionar ao meu plantel</a>`;
+  const pronto = f.id === id && !f.carregando;
+  const donos = pronto ? f.donos : [];
+  const filhos = pronto ? f.filhos : [];
+  const corpo = `
+    <div class="hero ${sexoCls(p.sexo)}">
+      <span class="ring">${esc(anilha(p))}</span>
+      <span class="name">${esc(p.nome || 'Sem nome')}</span>
+      <div class="tags"><span class="tag">${sym(p.sexo)} ${sexoTxt(p.sexo)}</span>${p.cor ? `<span class="tag">${esc(p.cor)}</span>` : ''}<span class="tag">${p.nascimento ? 'Nasceu em ' + ano : 'Ano ' + ano}</span>${r ? `<span class="tag ${r.situacao === 'ativo' ? 'ok' : ''}">${SIT[r.situacao]}</span>` : '<span class="tag">Não está no seu plantel</span>'}</div>
+    </div>
+    <div class="actions">${acoes}</div>
+    ${!r ? '<p class="hint">Este pombo aparece aqui porque é ancestral de um pombo seu.</p>' : ''}
+    <div class="ficha-grid">
+    <div class="col">
+    <section class="section"><h2>Pais</h2><div class="parents">${pcard(p.pai_id, 'Pai', 'M')}${pcard(p.mae_id, 'Mãe', 'F')}</div></section>
+    ${r && r.observacoes ? `<section class="section"><h2>Minhas observações</h2><p class="obs">${esc(r.observacoes)}</p><p class="hint">Só você vê estas observações.</p></section>` : ''}
+    <section class="section"><h2>Pombais por onde passou</h2>
+      ${!pronto ? carregandoHtml : donos.length ? `<ul class="donos">${donos.map(d => `<li class="${d.voce ? 'voce' : ''}">
+        <b>${esc(d.nome_pombal)}${d.voce ? ' (você)' : ''}</b>
+        <span>${esc([d.nome, d.cidade].filter(Boolean).join(' · '))}</span>
+        <span class="tag ${d.situacao === 'ativo' ? 'ok' : ''}">${d.situacao === 'ativo' ? 'Está com ele' : SIT[d.situacao]}</span>
+        ${d.data_entrada || d.data_saida ? `<small>${d.data_entrada ? 'Desde ' + dataBR(d.data_entrada) : ''}${d.data_saida ? (d.data_entrada ? ' até ' : 'Até ') + dataBR(d.data_saida) : ''}</small>` : ''}
+      </li>`).join('')}</ul>` : '<p class="hint">Nenhum pombal tem este pombo no plantel.</p>'}
+    </section>
+    <section class="section"><h2>Filhos (${filhos.length})</h2>
+      ${!pronto ? carregandoHtml : filhos.length ? `<ul class="list">${filhos.map(c => {
+        const conteudo = `<span class="sexbar"></span><span class="body"><span class="ring">${esc(c.anilha)}</span><span class="name">${esc(c.nome || 'Sem nome')}${c.cor ? ` · <span class="cor">${esc(c.cor)}</span>` : ''}</span><span class="meta">${c.pombais ? esc(c.pombais) : 'Sem pombal ativo'}</span></span><span class="side"><span class="sexsym ${sexoCls(c.sexo)}">${sym(c.sexo)}</span></span>`;
+        return `<li>${c.visivel ? `<a class="bird ${sexoCls(c.sexo)}" href="#/pombo/${c.id}">${conteudo}</a>` : `<div class="bird ${sexoCls(c.sexo)}">${conteudo}</div>`}</li>`;
+      }).join('')}</ul>` : '<p class="hint">Nenhum filho cadastrado no app.</p>'}
+    </section>
+    </div>
+    <section class="section col"><h2>Histórico</h2>
+      <p class="hint">O histórico é compartilhado: todos os pombais que têm ou tiveram este pombo veem os mesmos registros.</p>
+      ${f.erro && f.id === id ? `<p class="msg erro">${esc(f.erro)}</p>` : !pronto ? carregandoHtml : historicoHtml(p)}
+    </section>
+    </div>`;
+  return shell('pombo', p.nome || anilha(p), `${sexoTxt(p.sexo)}${p.cor ? ' · ' + p.cor : ''}`, corpo, { voltar: '#/plantel' });
+}
+
+// ----- Cadastro / edição -----
+function podeEditarDados(r) {
+  if (!r) return true;
+  if (r.situacao === 'ativo') return true;
+  const f = state.ficha;
+  return !(f.donos || []).some(d => d.situacao === 'ativo' && !d.voce);
+}
+
+function vFormPombo(r, q) {
+  const editando = !!r;
+  const id = r ? r.pombo_id : null;
+  if (editando && !(state.ficha.id === id && !state.ficha.carregando)) return shell('editar', 'Editar pombo', '', carregandoHtml, { voltar: `#/pombo/${id}` });
+  const p = editando ? pombo(id) || {} : {};
+  const pre = !editando && q.get('anilha') ? lerAnilha(q.get('anilha')) : null;
+  const ring = editando ? { numero: p.numero, ano: String(p.ano % 100).padStart(2, '0'), pais: p.pais } : (pre && !pre.erro ? { numero: pre.numero, ano: pre.ano.slice(-2), pais: pre.pais } : { numero: '', ano: String(new Date().getFullYear() % 100).padStart(2, '0'), pais: 'BRA' });
+  const sit = editando ? r.situacao : (q.get('situacao') || 'ativo');
+  const pode = podeEditarDados(r);
+  const travar = v => (!pode && v) ? 'disabled' : '';
+  const sexo = editando ? p.sexo || '' : (q.get('sexo') || '');
+  const pai = pombo(p.pai_id), mae = pombo(p.mae_id);
+  const opcoesAnilha = s => state.dados.plantel.map(x => pombo(x.pombo_id)).filter(x => x && x.sexo === s && x.id !== id).map(x => `<option value="${esc(anilha(x))}">${esc(x.nome || '')}</option>`).join('');
+  const dono = (state.ficha.donos || []).find(d => d.situacao === 'ativo' && !d.voce);
+  const corpo = `<form id="f-pombo" class="form-grid" novalidate>
+    ${editando ? `<input type="hidden" id="f-plantel" value="${esc(r.id)}">` : ''}
+    <p class="msg erro full" id="f-erro" role="alert" hidden></p>
+    <div class="full field-group">
+      <span class="label">Anilha</span>
+      <div class="row-3">
+        <div class="field"><label for="f-num">Número</label><input class="input mono" id="f-num" placeholder="1402317" value="${esc(ring.numero)}" required autocomplete="off"></div>
+        <div class="field"><label for="f-ano">Ano</label><input class="input mono" id="f-ano" inputmode="numeric" maxlength="4" placeholder="25" value="${esc(ring.ano)}" required></div>
+        <div class="field"><label for="f-pais">País</label><input class="input mono" id="f-pais" list="paises" maxlength="4" value="${esc(ring.pais)}" required autocapitalize="characters"><datalist id="paises">${PAISES.map(x => `<option value="${x}">`).join('')}</datalist></div>
+      </div>
+      <p class="hint" id="ring-preview">Fica assim no pedigree: <b class="mono">${esc(`${ring.numero || '0000000'}/${ring.ano || '00'} ${ring.pais}`)}</b></p>
+      <div id="ring-aviso"></div>
+      ${editando ? '<p class="hint">Corrigir a anilha leva para o pombo certo os registros que você fez no histórico.</p>' : ''}
+    </div>
+    ${!pode ? `<p class="msg info full">Este pombo está no pombal <b>${esc(dono ? dono.nome_pombal : 'de outro criador')}</b>. Só quem está com ele pode mudar nome, sexo, cor, nascimento e pais. O que estiver em branco você pode completar.</p>` : ''}
+    <div class="field"><label for="f-nome">Nome (opcional)</label><input class="input" id="f-nome" placeholder="Ex.: Trovão Azul" value="${esc(p.nome)}" ${travar(p.nome)}></div>
+    <div class="field"><span class="label">Sexo</span><input type="hidden" id="f-sexo" value="${esc(sexo)}">
+      <div class="seg"><button type="button" class="m" data-sexo="M" aria-pressed="${sexo === 'M'}" ${travar(p.sexo)}>♂ Macho</button><button type="button" class="f" data-sexo="F" aria-pressed="${sexo === 'F'}" ${travar(p.sexo)}>♀ Fêmea</button></div></div>
+    <div class="field"><label for="f-cor">Cor</label><input class="input" id="f-cor" list="cores" placeholder="Ex.: Azul barrado" value="${esc(p.cor)}" ${travar(p.cor)}><datalist id="cores">${CORES.map(c => `<option value="${c}">`).join('')}</datalist></div>
+    <div class="field"><label for="f-nasc">Data de nascimento (opcional)</label><input class="input" id="f-nasc" type="date" value="${esc(p.nascimento)}" ${travar(p.nascimento)}></div>
+    <div class="field"><label for="f-pai">Anilha do pai</label><input class="input mono" id="f-pai" list="machos" placeholder="Ex.: 0812-334/19 ALE" value="${esc(anilha(pai))}" ${travar(pai)} autocomplete="off"><datalist id="machos">${opcoesAnilha('M')}</datalist></div>
+    <div class="field"><label for="f-mae">Anilha da mãe</label><input class="input mono" id="f-mae" list="femeas" placeholder="Ex.: 1185320/18 BEL" value="${esc(anilha(mae))}" ${travar(mae)} autocomplete="off"><datalist id="femeas">${opcoesAnilha('F')}</datalist></div>
+    <p class="hint full">Escreva a anilha dos pais como no pedigree (número/ano país). Se eles ainda não estão no app, são criados automaticamente.</p>
+    <div class="field"><label for="f-sit">Situação</label><select class="input" id="f-sit">${SIT_FORM.map(([v, l]) => `<option value="${v}" ${v === sit ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    <div class="field" data-se="entrou"><label for="f-origem">Como chegou ao pombal</label><select class="input" id="f-origem">${ORIGEM.map(([v, l]) => `<option value="${v}" ${v === ((r && r.origem) || '') ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    <div class="field" data-se="entrou"><label for="f-origem-obs">De quem? (opcional)</label><input class="input" id="f-origem-obs" placeholder="Ex.: comprado de João, leilão do clube" value="${esc(r && r.origem_obs)}"></div>
+    <div class="field" data-se="entrou"><label for="f-entrada">Data de entrada (opcional)</label><input class="input" id="f-entrada" type="date" value="${esc(r && r.data_entrada)}"></div>
+    <div class="field" data-se="saiu"><label for="f-saida">Data de saída</label><input class="input" id="f-saida" type="date" value="${esc(r && r.data_saida)}"></div>
+    <div class="field" data-se="saiu"><label for="f-saida-obs">Detalhes da saída (opcional)</label><input class="input" id="f-saida-obs" placeholder="Ex.: vendido para Pombal Santa Rita" value="${esc(r && r.saida_obs)}"></div>
+    <div class="field full"><label for="f-obs">Títulos e observações</label><textarea class="input" id="f-obs" placeholder="Linhagem, origem, prêmios… Vai para o pedigree.">${esc(r && r.observacoes)}</textarea><p class="hint">Só você vê. Provas e resultados registre no histórico do pombo, que é compartilhado.</p></div>
+    <button class="btn btn-primary btn-block full" type="submit">${editando ? 'Salvar alterações' : 'Cadastrar pombo'}</button>
+  </form>
+  ${editando ? `<details class="remover"><summary>Tirar este pombo do meu plantel</summary>
+    <p class="hint">Se você vendeu, cedeu ou perdeu o pombo, não apague: mude a situação acima. Assim a passagem dele pelo seu pombal continua no histórico. Apague só se cadastrou por engano.</p>
+    <label class="check"><input type="checkbox" id="rm-registros"> Apagar também os registros que eu fiz no histórico dele</label>
+    <button class="btn btn-perigo" type="button" data-remover="${esc(r.id)}">Tirar do meu plantel</button>
+  </details>` : ''}`;
+  return shell(editando ? 'editar' : 'novo', editando ? 'Editar pombo' : 'Cadastrar pombo', editando ? anilha(p) : 'Novo pombo no plantel', corpo, { voltar: editando ? `#/pombo/${id}` : '#/plantel' });
+}
+
+function ajustarCamposSituacao() {
+  const s = $('#f-sit'); if (!s) return;
+  const v = s.value;
+  document.querySelectorAll('[data-se="entrou"]').forEach(el => { el.hidden = v === 'referencia'; });
+  document.querySelectorAll('[data-se="saiu"]').forEach(el => { el.hidden = !SAIU.includes(v); });
+}
+
+let buscaT;
+function verificarAnilha() {
+  const prev = $('#ring-preview b'); if (!prev) return;
+  const n = $('#f-num').value.trim(), a = $('#f-ano').value.trim(), pa = $('#f-pais').value.trim().toUpperCase();
+  prev.textContent = `${n || '0000000'}/${(a || '00').slice(-2)} ${pa}`;
+  const aviso = $('#ring-aviso');
+  aviso.innerHTML = '';
+  clearTimeout(buscaT);
+  if (!n || !/^\d{2}(\d{2})?$/.test(a) || !/^[A-Z]{2,4}$/.test(pa)) return;
+  buscaT = setTimeout(async () => {
+    const { data, error } = await sb.rpc('buscar_anilha', { p_pais: pa, p_ano: Number(a), p_numero: n });
+    if (error || !data || !data.existe || !$('#ring-aviso')) return;
+    const atual = $('#f-plantel') && meuRegistro(data.pombo_id);
+    if (atual && $('#f-plantel').value === atual.id) return;
+    $('#ring-aviso').innerHTML = data.no_meu_plantel
+      ? `<p class="msg erro">Esta anilha já está no seu plantel. <a href="#/pombo/${esc(data.pombo_id)}">Abrir a ficha</a></p>`
+      : `<p class="msg info"><b>Este pombo já está no app.</b> Passou por ${data.pombais} ${data.pombais === 1 ? 'pombal' : 'pombais'} e tem ${data.registros} ${data.registros === 1 ? 'registro' : 'registros'} no histórico. Ao salvar, ele entra no seu plantel e você passa a ver o histórico completo. Nome, cor e pais já cadastrados são mantidos; você completa o que estiver em branco.</p>`;
+  }, 350);
+}
+
+// ----- Registro no histórico -----
+function vFormEvento(pomboId, eventoId) {
+  const p = pombo(pomboId);
+  const f = state.ficha;
+  if (!state.dados.carregado || (eventoId && !(f.id === pomboId && !f.carregando))) return shell('evento', 'Histórico', '', erroDados() || carregandoHtml, { voltar: `#/pombo/${pomboId}` });
+  if (!p || !meuRegistro(pomboId)) return shell('evento', 'Histórico', '', '<p class="msg erro">Só dá para registrar no histórico de pombos que estão no seu plantel.</p>', { voltar: `#/pombo/${pomboId}` });
+  const e = eventoId ? f.eventos.find(x => x.id === eventoId) : null;
+  if (eventoId && !e) return shell('evento', 'Histórico', '', '<p class="msg erro">Registro não encontrado.</p>', { voltar: `#/pombo/${pomboId}` });
+  const tipo = e ? e.tipo : 'prova';
+  const hoje = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const corpo = `<form id="f-evento" class="form-grid" novalidate>
+    <input type="hidden" id="e-pombo" value="${esc(pomboId)}">${e ? `<input type="hidden" id="e-id" value="${esc(e.id)}">` : ''}
+    <p class="msg erro full" id="e-erro" role="alert" hidden></p>
+    <div class="field"><label for="e-tipo">Tipo</label><select class="input" id="e-tipo">${TIPOS_MANUAIS.map(t => `<option value="${t}" ${t === tipo ? 'selected' : ''}>${TIPOS[t]}</option>`).join('')}</select></div>
+    <div class="field"><label for="e-data">Data</label><input class="input" id="e-data" type="date" value="${esc(e ? e.data : hoje)}"></div>
+    <div class="field full" data-tipo="prova"><label for="e-prova">Prova / local de soltura</label><input class="input" id="e-prova" placeholder="Ex.: Campeonato Estadual · Soltura em Uberlândia" value="${esc(e && e.prova_nome)}"></div>
+    <div class="field" data-tipo="prova"><label for="e-col">Colocação</label><input class="input" id="e-col" type="number" min="1" inputmode="numeric" placeholder="Ex.: 1" value="${esc(e && e.colocacao)}"></div>
+    <div class="field" data-tipo="prova"><label for="e-part">Total de pombos na prova</label><input class="input" id="e-part" type="number" min="1" inputmode="numeric" placeholder="Ex.: 1840" value="${esc(e && e.participantes)}"></div>
+    <div class="field" data-tipo="prova"><label for="e-dist">Distância (km)</label><input class="input" id="e-dist" type="number" min="0" step="0.1" inputmode="decimal" placeholder="Ex.: 320" value="${esc(e && e.distancia_km)}"></div>
+    <div class="field" data-tipo="prova"><label for="e-vel">Velocidade (m/min)</label><input class="input" id="e-vel" type="number" min="0" step="0.001" inputmode="decimal" placeholder="Ex.: 1245.5" value="${esc(e && e.velocidade)}"></div>
+    <div class="field full"><label for="e-desc">Detalhes</label><textarea class="input" id="e-desc" placeholder="Ex.: vacina contra paramixovírus; acasalado com a 1185320/18 BEL; 1º ás pombo do clube…">${esc(e && e.descricao)}</textarea></div>
+    <p class="hint full">Este registro fica visível para todos os pombais que tiverem este pombo, com o nome do seu pombal. Só você pode alterar ou apagar o que registrou.</p>
+    <button class="btn btn-primary btn-block full" type="submit">${e ? 'Salvar alterações' : 'Registrar'}</button>
+    ${e ? `<button class="btn btn-perigo btn-block full" type="button" data-apagar-evento="${esc(e.id)}">Apagar este registro</button>` : ''}
+  </form>`;
+  return shell('evento', e ? 'Editar registro' : 'Registrar no histórico', `${anilha(p)}${p.nome ? ' · ' + p.nome : ''}`, corpo, { voltar: `#/pombo/${pomboId}` });
+}
+
+function ajustarCamposTipo() {
+  const s = $('#e-tipo'); if (!s) return;
+  document.querySelectorAll('[data-tipo="prova"]').forEach(el => { el.hidden = s.value !== 'prova'; });
 }
 
 function vPedigree() {
   return shell('pedigree', 'Pedigree', nomePombal(), `
     <div class="vazio">${I.tree}<h2>Pedigree em breve</h2>
-      <p>Depois do cadastro dos pombos, aqui você vai gerar o PDF do pedigree com 5 gerações.</p></div>`);
+      <p>Na próxima etapa, aqui você vai gerar o PDF do pedigree com 5 gerações, a partir dos pombos e pais cadastrados no plantel.</p></div>`);
 }
 
 function vConta() {
@@ -145,7 +452,7 @@ function vConta() {
   return shell('conta', 'Meu pombal', 'Conta e dados do pedigree', `
     <form id="f-perfil" class="form-grid">
       ${erro}
-      <p class="hint full">Estes dados vão aparecer no cabeçalho dos pedigrees que você emitir.</p>
+      <p class="hint full">Estes dados vão aparecer no cabeçalho dos pedigrees que você emitir. O nome do pombal, seu nome e a cidade também aparecem no histórico dos pombos que passarem por você (e-mail e telefone não).</p>
       <div class="field"><label for="p-nome">Seu nome</label><input class="input" id="p-nome" value="${esc(p.nome)}" autocomplete="name"></div>
       <div class="field"><label for="p-pombal">Nome do pombal</label><input class="input" id="p-pombal" value="${esc(p.nome_pombal)}"></div>
       <div class="field full"><label for="p-cidade">Cidade, estado e país</label><input class="input" id="p-cidade" value="${esc(p.cidade)}" placeholder="Ex.: Campinas - SP - Brasil"></div>
@@ -164,18 +471,33 @@ function render() {
   const logado = state.session && state.auth !== 'novaSenha';
   app.classList.toggle('sem-abas', !logado);
   if (!logado) { app.innerHTML = vAuth(); return; }
-  const r = rotaAtual();
-  app.innerHTML = r === 'conta' ? vConta() : r === 'pedigree' ? vPedigree() : vPlantel();
+  const r = rota();
+  let html;
+  if (r.nome === 'conta') html = vConta();
+  else if (r.nome === 'pedigree') html = vPedigree();
+  else if (r.nome === 'pombo') html = vFicha(r.a);
+  else if (r.nome === 'novo') html = state.dados.carregado ? vFormPombo(null, r.q) : shell('novo', 'Cadastrar pombo', '', erroDados() || carregandoHtml, { voltar: '#/plantel' });
+  else if (r.nome === 'editar') {
+    const reg = state.dados.plantel.find(x => x.id === r.a);
+    html = !state.dados.carregado ? shell('editar', 'Editar pombo', '', erroDados() || carregandoHtml, { voltar: '#/plantel' })
+      : reg ? vFormPombo(reg, r.q) : shell('editar', 'Editar pombo', '', '<p class="msg erro">Este pombo não está no seu plantel.</p>', { voltar: '#/plantel' });
+  } else if (r.nome === 'evento') html = vFormEvento(r.a, r.b);
+  else html = vPlantel();
+  app.innerHTML = html;
+  ajustarCamposSituacao();
+  ajustarCamposTipo();
 }
 
 // ---------- Dados ----------
+const faltaSQL = m => /relation|schema cache|does not exist|could not find the function/i.test(m || '');
+
 async function carregarPerfil() {
   state.perfilErro = null;
   if (!state.session) { state.perfil = null; return; }
   const { data, error } = await sb.from('perfis').select('*').eq('id', state.session.user.id).maybeSingle();
   if (error) {
     state.perfil = null;
-    state.perfilErro = /perfis|relation|schema cache/i.test(error.message)
+    state.perfilErro = faltaSQL(error.message)
       ? 'O banco de dados ainda não foi preparado (falta rodar o SQL no Supabase).'
       : traduzir(error.message);
     return;
@@ -183,12 +505,100 @@ async function carregarPerfil() {
   state.perfil = data;
 }
 
+async function carregarPlantel() {
+  if (!state.session) { state.dados = { carregado: false, erro: null, plantel: [], pombos: new Map() }; return; }
+  const [pl, po] = await Promise.all([
+    sb.from('plantel').select('*'),
+    sb.from('pombos').select('*')
+  ]);
+  const err = pl.error || po.error;
+  if (err) {
+    state.dados = { carregado: false, plantel: [], pombos: new Map(),
+      erro: faltaSQL(err.message) ? 'O banco de dados ainda não tem o plantel: falta rodar o arquivo 02_plantel_historico.sql no Supabase.' : traduzir(err.message) };
+    return;
+  }
+  state.dados = { carregado: true, erro: null, plantel: pl.data || [], pombos: new Map((po.data || []).map(p => [p.id, p])) };
+}
+
+async function carregarFicha(id) {
+  state.ficha = { id, carregando: true, erro: null, eventos: [], donos: [], filhos: [] };
+  const [ev, dn, fl] = await Promise.all([
+    sb.from('eventos').select('*').eq('pombo_id', id).order('data', { ascending: true, nullsFirst: false }).order('criado_em', { ascending: true }),
+    sb.rpc('donos_do_pombo', { p: id }),
+    sb.rpc('filhos_do_pombo', { p: id })
+  ]);
+  if (state.ficha.id !== id) return;
+  const err = ev.error || dn.error || fl.error;
+  state.ficha = { id, carregando: false, erro: err ? traduzir(err.message) : null, eventos: ev.data || [], donos: dn.data || [], filhos: fl.data || [] };
+}
+
+// Carrega o que a tela atual precisa e redesenha.
+async function abrirRota() {
+  const r = rota();
+  if (!state.dados.carregado && !state.dados.erro) { await carregarPlantel(); }
+  let pid = null;
+  if (r.nome === 'pombo' || r.nome === 'evento') pid = r.a;
+  if (r.nome === 'editar') { const reg = state.dados.plantel.find(x => x.id === r.a); pid = reg && reg.pombo_id; }
+  if (pid && state.ficha.id !== pid) { state.ficha = { id: pid, carregando: true, erro: null, eventos: [], donos: [], filhos: [] }; render(); await carregarFicha(pid); }
+  render();
+}
+
+async function recarregarTudo(pid) {
+  await carregarPlantel();
+  if (pid) await carregarFicha(pid);
+}
+
 // ---------- Eventos ----------
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-auth],[data-sair]');
+  const t = e.target.closest('[data-auth],[data-sair],[data-filtro],[data-hist],[data-sexo],[data-remover],[data-apagar-evento]');
   if (!t) return;
-  if (t.dataset.auth) { state.auth = t.dataset.auth; state.authMsg = null; render(); return; }
-  if (t.hasAttribute('data-sair')) { await sb.auth.signOut(); state.auth = 'entrar'; history.replaceState(null, '', location.pathname); }
+  const d = t.dataset;
+  if (d.auth) { state.auth = d.auth; state.authMsg = null; render(); return; }
+  if (t.hasAttribute('data-sair')) { await sb.auth.signOut(); state.auth = 'entrar'; history.replaceState(null, '', location.pathname); return; }
+  if (d.filtro) {
+    state.filtro = d.filtro;
+    document.querySelectorAll('[data-filtro]').forEach(c => c.setAttribute('aria-pressed', c.dataset.filtro === d.filtro));
+    $('#lista').innerHTML = listaHtml();
+    return;
+  }
+  if (d.hist) { state.histFiltro = d.hist; render(); return; }
+  if (d.sexo) {
+    $('#f-sexo').value = d.sexo;
+    document.querySelectorAll('[data-sexo]').forEach(c => c.setAttribute('aria-pressed', c.dataset.sexo === d.sexo));
+    return;
+  }
+  if (d.remover) {
+    const apagar = $('#rm-registros') && $('#rm-registros').checked;
+    if (!confirm(apagar ? 'Tirar este pombo do seu plantel e apagar os registros que você fez no histórico dele?' : 'Tirar este pombo do seu plantel?')) return;
+    t.disabled = true;
+    const { error } = await sb.rpc('remover_do_plantel', { p_plantel: d.remover, p_apagar_registros: !!apagar });
+    if (error) { t.disabled = false; toast(traduzir(error.message)); return; }
+    state.ficha = { id: null };
+    await carregarPlantel();
+    location.hash = '#/plantel';
+    toast('Pombo retirado do plantel.');
+    return;
+  }
+  if (d.apagarEvento) {
+    if (!confirm('Apagar este registro do histórico?')) return;
+    t.disabled = true;
+    const pid = $('#e-pombo').value;
+    const { error } = await sb.from('eventos').delete().eq('id', d.apagarEvento);
+    if (error) { t.disabled = false; toast(traduzir(error.message)); return; }
+    await carregarFicha(pid);
+    location.hash = '#/pombo/' + pid;
+    toast('Registro apagado.');
+  }
+});
+
+document.addEventListener('input', e => {
+  if (e.target.id === 'q') { state.q = e.target.value; $('#lista').innerHTML = listaHtml(); }
+  if (['f-num', 'f-ano', 'f-pais'].includes(e.target.id)) verificarAnilha();
+});
+
+document.addEventListener('change', e => {
+  if (e.target.id === 'f-sit') ajustarCamposSituacao();
+  if (e.target.id === 'e-tipo') ajustarCamposTipo();
 });
 
 async function ocupar(fn) {
@@ -197,11 +607,81 @@ async function ocupar(fn) {
   state.ocupado = false; render();
 }
 
+function mostrarErro(sel, texto) {
+  const el = $(sel);
+  if (!el) { toast(texto); return; }
+  el.textContent = texto; el.hidden = false;
+  el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+
+const CAMPOS = { nome: 'nome', sexo: 'sexo', cor: 'cor', nascimento: 'nascimento', pai: 'pai', mae: 'mãe' };
+
+async function salvarPombo(form) {
+  const v = sel => { const el = $(sel); return el ? el.value.trim() : ''; };
+  const pai = lerAnilha(v('#f-pai')), mae = lerAnilha(v('#f-mae'));
+  if (!v('#f-num') || !/^\d{2}(\d{2})?$/.test(v('#f-ano')) || !/^[A-Za-z]{2,4}$/.test(v('#f-pais'))) return mostrarErro('#f-erro', 'Preencha a anilha: número, ano (2 dígitos, ex.: 25) e país (ex.: BRA).');
+  if (pai && pai.erro) return mostrarErro('#f-erro', 'Pai: ' + pai.erro);
+  if (mae && mae.erro) return mostrarErro('#f-erro', 'Mãe: ' + mae.erro);
+  const sit = v('#f-sit');
+  const dados = {
+    plantel_id: v('#f-plantel') || null,
+    numero: v('#f-num'), ano: v('#f-ano'), pais: v('#f-pais').toUpperCase(),
+    nome: v('#f-nome'), sexo: v('#f-sexo'), cor: v('#f-cor'), nascimento: v('#f-nasc'),
+    pai, mae, situacao: sit,
+    origem: sit === 'referencia' ? '' : v('#f-origem'),
+    origem_obs: sit === 'referencia' ? '' : v('#f-origem-obs'),
+    data_entrada: sit === 'referencia' ? '' : v('#f-entrada'),
+    data_saida: SAIU.includes(sit) ? v('#f-saida') : '',
+    saida_obs: SAIU.includes(sit) ? v('#f-saida-obs') : '',
+    observacoes: $('#f-obs').value.trim()
+  };
+  const btn = form.querySelector('[type=submit]');
+  const rotulo = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Salvando…';
+  const { data, error } = await sb.rpc('salvar_pombo', { d: dados });
+  if (error) {
+    btn.disabled = false; btn.textContent = rotulo;
+    return mostrarErro('#f-erro', faltaSQL(error.message) ? 'O banco de dados ainda não tem o plantel: falta rodar o arquivo 02_plantel_historico.sql no Supabase.' : traduzir(error.message));
+  }
+  await recarregarTudo(data.pombo_id);
+  location.hash = '#/pombo/' + data.pombo_id;
+  const ign = (data.ignorados || []).map(c => CAMPOS[c] || c);
+  if (ign.length) toast(`Salvo. Não mudamos ${ign.join(', ')}: o pombo já tinha esses dados e só quem está com ele pode alterar.`);
+  else toast(dados.plantel_id ? 'Alterações salvas.' : data.ja_existia ? 'Pombo cadastrado. O histórico dele já está disponível.' : 'Pombo cadastrado.');
+}
+
+async function salvarEvento(form) {
+  const v = sel => { const el = $(sel); return el ? el.value.trim() : ''; };
+  const n = sel => { const x = v(sel); return x === '' ? null : Number(x); };
+  const tipo = v('#e-tipo'), prova = tipo === 'prova';
+  const reg = {
+    pombo_id: v('#e-pombo'), tipo, data: v('#e-data') || null, descricao: v('#e-desc') || null,
+    prova_nome: prova ? v('#e-prova') || null : null,
+    colocacao: prova ? n('#e-col') : null, participantes: prova ? n('#e-part') : null,
+    distancia_km: prova ? n('#e-dist') : null, velocidade: prova ? n('#e-vel') : null
+  };
+  if (!reg.descricao && !reg.prova_nome && !reg.colocacao) return mostrarErro('#e-erro', 'Escreva algum detalhe do registro.');
+  if (reg.colocacao && reg.participantes && reg.colocacao > reg.participantes) return mostrarErro('#e-erro', 'A colocação não pode ser maior que o total de pombos na prova.');
+  const btn = form.querySelector('[type=submit]');
+  const rotulo = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Salvando…';
+  const id = v('#e-id');
+  const { error } = id
+    ? await sb.from('eventos').update(reg).eq('id', id)
+    : await sb.from('eventos').insert(reg);
+  if (error) { btn.disabled = false; btn.textContent = rotulo; return mostrarErro('#e-erro', traduzir(error.message)); }
+  await carregarFicha(reg.pombo_id);
+  location.hash = '#/pombo/' + reg.pombo_id;
+  toast(id ? 'Registro alterado.' : 'Registrado no histórico.');
+}
+
 document.addEventListener('submit', e => {
   e.preventDefault();
   const id = e.target.id;
   const v = sel => { const el = $(sel); return el ? el.value.trim() : ''; };
 
+  if (id === 'f-pombo') return salvarPombo(e.target);
+  if (id === 'f-evento') return salvarEvento(e.target);
   if (id === 'f-auth') {
     const email = v('#a-email'), senha = $('#a-senha').value;
     if (state.auth === 'criar') {
@@ -262,7 +742,8 @@ document.addEventListener('submit', e => {
   }
 });
 
-window.addEventListener('hashchange', () => { if (state.pronto) { render(); window.scrollTo(0, 0); } });
+
+window.addEventListener('hashchange', () => { if (state.pronto && state.session) { render(); window.scrollTo(0, 0); abrirRota(); } else if (state.pronto) render(); });
 
 sb.auth.onAuthStateChange((event, session) => {
   // Não chamar o Supabase direto aqui dentro (evita travar); agenda para depois.
@@ -271,7 +752,12 @@ sb.auth.onAuthStateChange((event, session) => {
     const mudouUsuario = (state.session && state.session.user.id) !== (session && session.user.id);
     state.session = session;
     if (!state.pronto) return;
-    if (mudouUsuario) await carregarPerfil();
+    if (mudouUsuario) {
+      state.dados = { carregado: false, erro: null, plantel: [], pombos: new Map() };
+      state.ficha = { id: null };
+      await carregarPerfil();
+      if (session) { render(); await abrirRota(); return; }
+    }
     render();
   }, 0);
 });
@@ -287,5 +773,6 @@ sb.auth.onAuthStateChange((event, session) => {
   state.pronto = true;
   if (state.session && /access_token|type=/.test(location.hash)) history.replaceState(null, '', location.pathname + '#/plantel');
   render();
+  if (state.session) abrirRota();
 })();
 })();

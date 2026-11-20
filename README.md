@@ -7,7 +7,8 @@ App desenvolvido por **Cleber Felipe Brilhante**.
 ## Como funciona
 
 - Site estático (HTML, CSS e JavaScript, sem etapa de build). Pode ser publicado no Vercel, Netlify ou GitHub Pages.
-- Login e banco de dados no [Supabase](https://supabase.com). Cada usuário só acessa os próprios dados (Row Level Security).
+- Login e banco de dados no [Supabase](https://supabase.com). Cada usuário só acessa o próprio plantel (Row Level Security).
+- Histórico compartilhado: a anilha (país + ano + número) identifica o pombo no app todo. Quem cadastra uma anilha que já existe passa a ver o histórico completo do pombo (nascimento, pombais por onde passou, provas e resultados, saúde, reprodução, observações).
 - Configuração pública (URL e chave publicável do Supabase) em `js/config.js`.
 - Scripts do banco em `supabase/`, numerados na ordem em que devem ser rodados no SQL Editor do Supabase.
 
@@ -17,14 +18,16 @@ App desenvolvido por **Cleber Felipe Brilhante**.
 |---|---|
 | `index.html` | Página única do app |
 | `css/style.css` | Visual |
-| `js/app.js` | Telas e lógica (login, cadastro, conta) |
+| `js/app.js` | Telas e lógica (login, conta, plantel, ficha, histórico) |
 | `js/config.js` | Nome do app, criador e dados do Supabase |
 | `vendor/supabase.js` | Biblioteca oficial do Supabase (supabase-js 2.119.2) |
 | `supabase/01_base_login.sql` | Tabela `perfis` e regras de segurança |
+| `supabase/02_plantel_historico.sql` | Tabelas `pombos`, `plantel` e `eventos`, regras do histórico compartilhado |
 
 ## Etapas
 
 1. Base e login ✅
-2. Cadastro do plantel
-3. Pedigree em PDF
-4. Fotos do olho e da cabeça, leitura de pedigrees em foto/PDF
+2. Cadastro do plantel e histórico compartilhado ✅
+3. Tela de administrador
+4. Pedigree em PDF
+5. Fotos do olho e da cabeça, leitura de pedigrees em foto/PDF
