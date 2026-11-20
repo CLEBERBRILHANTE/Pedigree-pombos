@@ -2,7 +2,7 @@
 
 App gratuito para columbófilos: cadastro do plantel de pombos e emissão de pedigree com a árvore genealógica.
 
-Criado por **Cleber Felipe Brilhante**.
+App desenvolvido por **Cleber Felipe Brilhante**.
 
 ## Como funciona
 
