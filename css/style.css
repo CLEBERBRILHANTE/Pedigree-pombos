@@ -241,3 +241,14 @@ a.bird:hover { border-color: var(--accent); }
   .remover { max-width: 760px; }
   .row-3 { gap: 14px; }
 }
+
+/* ---------- Pedigree ---------- */
+.actions .btn:nth-child(3) { grid-column: 1 / -1; }
+.ped-ger { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ped-ger .pcard small { text-transform: none; letter-spacing: 0; }
+@media (min-width: 960px) {
+  .ped-ger.g2, .ped-ger.g3, .ped-ger.g4 { grid-template-columns: repeat(4, 1fr); }
+  .ped-ger.g1 { max-width: 520px; }
+  #ped-texto { max-width: 760px; }
+  main.view .field:has(#ped-texto) { max-width: 760px; }
+}

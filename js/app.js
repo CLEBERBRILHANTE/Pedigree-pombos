@@ -184,10 +184,10 @@ function filtrarPlantel() {
   }).sort((x, y) => ((y.r.situacao === 'ativo') - (x.r.situacao === 'ativo')) || (y.p.ano - x.p.ano) || x.p.numero.localeCompare(y.p.numero, 'pt-BR', { numeric: true }));
 }
 
-function itemPombo(p, r) {
+function itemPombo(p, r, href) {
   const pai = pombo(p.pai_id), mae = pombo(p.mae_id);
   const tag = r ? `<span class="tag ${r.situacao === 'ativo' ? 'ok' : ''}">${SIT[r.situacao]}</span>` : '';
-  return `<li><a class="bird ${sexoCls(p.sexo)}" href="#/pombo/${p.id}">
+  return `<li><a class="bird ${sexoCls(p.sexo)}" href="${href || `#/pombo/${p.id}`}">
     <span class="sexbar"></span>
     <span class="body"><span class="ring">${esc(anilha(p))}</span>
       <span class="name">${esc(p.nome || 'Sem nome')}${p.cor ? ` · <span class="cor">${esc(p.cor)}</span>` : ''}</span>
@@ -277,8 +277,8 @@ function vFicha(id) {
   const r = meuRegistro(id);
   const ano = p.nascimento ? dataBR(p.nascimento) : String(p.ano);
   const acoes = r
-    ? `<a class="btn btn-primary" href="#/evento/${p.id}">${I.plus}Registrar no histórico</a><a class="btn btn-ghost" href="#/editar/${r.id}">${I.edit}Editar</a>`
-    : `<a class="btn btn-primary" href="#/novo?anilha=${encodeURIComponent(anilha(p))}&situacao=referencia">${I.plus}Adicionar ao meu plantel</a>`;
+    ? `<a class="btn btn-primary" href="#/evento/${p.id}">${I.plus}Registrar no histórico</a><a class="btn btn-ghost" href="#/editar/${r.id}">${I.edit}Editar</a><a class="btn btn-ghost" href="#/pedigree/${p.id}">${I.tree}Pedigree em PDF</a>`
+    : `<a class="btn btn-primary" href="#/novo?anilha=${encodeURIComponent(anilha(p))}&situacao=referencia">${I.plus}Adicionar ao meu plantel</a><a class="btn btn-ghost" href="#/pedigree/${p.id}">${I.tree}Pedigree em PDF</a>`;
   const pronto = f.id === id && !f.carregando;
   const donos = pronto ? f.donos : [];
   const filhos = pronto ? f.filhos : [];
@@ -439,10 +439,211 @@ function ajustarCamposTipo() {
   document.querySelectorAll('[data-tipo="prova"]').forEach(el => { el.hidden = s.value !== 'prova'; });
 }
 
-function vPedigree() {
-  return shell('pedigree', 'Pedigree', nomePombal(), `
-    <div class="vazio">${I.tree}<h2>Pedigree em breve</h2>
-      <p>Na próxima etapa, aqui você vai gerar o PDF do pedigree com 5 gerações, a partir dos pombos e pais cadastrados no plantel.</p></div>`);
+// ----- Pedigree -----
+// Árvore em posições: 1 = pombo, 2 = pai, 3 = mãe, 4 = pai do pai… (filhos de n: 2n e 2n+1).
+function arvore(id, geracoes = 5) {
+  const pos = new Array(2 ** geracoes).fill(null);
+  pos[1] = pombo(id);
+  for (let n = 1; n < 2 ** (geracoes - 1); n++) {
+    const p = pos[n];
+    if (!p) continue;
+    pos[2 * n] = pombo(p.pai_id);
+    pos[2 * n + 1] = pombo(p.mae_id);
+  }
+  return pos;
+}
+
+const NOMES_GERACAO = ['', 'Pais', 'Avós', 'Bisavós', 'Trisavós'];
+function rotuloPos(n) {
+  const g = Math.floor(Math.log2(n)), macho = n % 2 === 0;
+  if (g === 1) return macho ? 'Pai' : 'Mãe';
+  const lado = n < 3 * 2 ** (g - 1) ? 'paterno' : 'materno';
+  const base = { 2: macho ? 'Avô' : 'Avó', 3: macho ? 'Bisavô' : 'Bisavó', 4: macho ? 'Trisavô' : 'Trisavó' }[g];
+  return `${base} ${macho ? lado : lado.replace(/o$/, 'a')}`;
+}
+
+function vPedigreeEscolher() {
+  if (!state.dados.carregado) return shell('pedigree', 'Pedigree', nomePombal(), erroDados() || carregandoHtml);
+  if (!state.dados.plantel.length) {
+    return shell('pedigree', 'Pedigree', nomePombal(), `${erroDados()}<div class="vazio">${I.tree}<h2>Nenhum pombo ainda</h2>
+      <p>Cadastre um pombo com pai e mãe para emitir o pedigree dele.</p><a class="btn btn-primary" href="#/novo">${I.plus}Cadastrar pombo</a></div>`);
+  }
+  return shell('pedigree', 'Pedigree', 'Escolha o pombo', `${erroDados()}
+    <p class="hint">O pedigree sai em PDF (folha A4) com 5 gerações: o pombo, pais, avós, bisavós e trisavós. No cabeçalho vão os dados de <a href="#/conta">Meu pombal</a>.</p>
+    <div class="search">${I.search}<input class="input" id="q-ped" type="search" placeholder="Buscar por anilha, nome ou cor" value="${esc(state.q)}" aria-label="Buscar"></div>
+    <ul class="list" id="lista-ped">${listaPedigreeHtml()}</ul>`);
+}
+
+function listaPedigreeHtml() {
+  const q = state.q.trim().toLowerCase();
+  const l = state.dados.plantel.map(r => ({ r, p: pombo(r.pombo_id) }))
+    .filter(({ p }) => p && (!q || [anilha(p), p.numero, p.nome, p.cor].some(v => v && String(v).toLowerCase().includes(q))))
+    .sort((x, y) => ((y.r.situacao === 'ativo') - (x.r.situacao === 'ativo')) || (y.p.ano - x.p.ano) || x.p.numero.localeCompare(y.p.numero, 'pt-BR', { numeric: true }));
+  return l.length ? l.map(({ r, p }) => itemPombo(p, r, `#/pedigree/${p.id}`)).join('') : '<li class="empty">Nenhum pombo encontrado.</li>';
+}
+
+function pcardPed(p, n) {
+  const f = n % 2 === 1 ? 'f' : '';
+  if (!p) return `<div class="pcard unknown ${f}"><small>${rotuloPos(n)}</small><span>Não informado</span></div>`;
+  return `<a class="pcard ${f}" href="#/pombo/${p.id}"><small>${rotuloPos(n)}</small><span class="mono">${esc(anilha(p))}</span><span>${esc(p.nome || p.cor || '')}</span></a>`;
+}
+
+function vPedigree(id) {
+  if (!id) return vPedigreeEscolher();
+  if (!state.dados.carregado) return shell('pedigree', 'Pedigree', '', erroDados() || carregandoHtml, { voltar: '#/pedigree' });
+  const p = pombo(id);
+  if (!p) return shell('pedigree', 'Pedigree', '', '<div class="vazio"><h2>Pombo não encontrado</h2><a class="btn btn-ghost" href="#/pedigree">Escolher outro pombo</a></div>', { voltar: '#/pedigree' });
+  const pos = arvore(id);
+  const faltam = pos.slice(2).filter(x => !x).length;
+  const r = meuRegistro(id);
+  const perfil = state.perfil || {};
+  const semCabecalho = !perfil.nome_pombal && !perfil.nome;
+  let geracoes = '';
+  for (let g = 1; g <= 4; g++) {
+    const cards = [];
+    for (let n = 2 ** g; n < 2 ** (g + 1); n++) cards.push(pcardPed(pos[n], n));
+    geracoes += `<section class="section"><h2>${NOMES_GERACAO[g]}</h2><div class="ped-ger g${g}">${cards.join('')}</div></section>`;
+  }
+  const corpo = `
+    <div class="hero ${sexoCls(p.sexo)}">
+      <span class="ring">${esc(anilha(p))}</span>
+      <span class="name">${esc(p.nome || 'Sem nome')}</span>
+      <div class="tags"><span class="tag">${sym(p.sexo)} ${sexoTxt(p.sexo)}</span>${p.cor ? `<span class="tag">${esc(p.cor)}</span>` : ''}<span class="tag">${30 - faltam} de 30 ancestrais cadastrados</span></div>
+    </div>
+    ${semCabecalho ? `<p class="msg info">Preencha os dados de <a href="#/conta">Meu pombal</a> (nome do pombal, cidade, telefone) para eles saírem no cabeçalho do pedigree.</p>` : ''}
+    <div class="field"><label for="ped-texto">Texto no quadro do pombo</label>
+      <textarea class="input" id="ped-texto" placeholder="Ex.: Pombo cedido a Fulano · Linhagem, títulos e prêmios">${esc(r && r.observacoes)}</textarea>
+      <p class="hint">Vem das observações do pombo. Pode mudar aqui só para este PDF. O texto de cada ancestral vem de "Títulos e observações" na ficha dele.</p></div>
+    <div class="actions"><button class="btn btn-primary" type="button" data-pdf="${esc(p.id)}">${I.tree}Baixar pedigree em PDF</button><a class="btn btn-ghost" href="#/pedigree">Escolher outro pombo</a></div>
+    ${faltam ? `<p class="hint">${faltam === 1 ? 'Falta 1 ancestral' : `Faltam ${faltam} ancestrais`}. Os quadros vazios saem em branco no PDF. Para completar, abra o ancestral e informe o pai e a mãe dele.</p>` : ''}
+    ${geracoes}`;
+  return shell('pedigree', 'Pedigree', anilha(p) + (p.nome ? ' · ' + p.nome : ''), corpo, { voltar: '#/pedigree' });
+}
+
+// ----- PDF do pedigree (gerado no navegador com jsPDF) -----
+let jsPDFPromessa;
+function carregarJsPDF() {
+  if (window.jspdf) return Promise.resolve(window.jspdf.jsPDF);
+  if (!jsPDFPromessa) {
+    jsPDFPromessa = new Promise((ok, falha) => {
+      const s = document.createElement('script');
+      s.src = 'vendor/jspdf.umd.min.js';
+      s.onload = () => ok(window.jspdf.jsPDF);
+      s.onerror = () => { jsPDFPromessa = null; falha(new Error('Não foi possível carregar o gerador de PDF. Verifique sua internet e tente de novo.')); };
+      document.head.appendChild(s);
+    });
+  }
+  return jsPDFPromessa;
+}
+
+// As fontes padrão do PDF só têm letras latinas: troca o resto por equivalentes simples.
+const textoPdf = s => String(s ?? '').normalize('NFC')
+  .replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-')
+  .replace(/…/g, '...').replace(/→/g, '->').replace(/♂/g, 'M').replace(/♀/g, 'F')
+  .replace(/[^\n\x20-\x7E\xA0-\xFF]/g, '');
+
+async function gerarPedigreePDF(id, textoPrincipal) {
+  const JsPDF = await carregarJsPDF();
+  const doc = new JsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+  const pos = arvore(id);
+  const alvo = pos[1];
+  const perfil = state.perfil || {};
+  const PT = 0.3528; // 1 ponto em mm
+  const W = 210, M = 10;
+
+  // Cabeçalho: dados do pombal
+  const titulo = [perfil.nome, perfil.nome_pombal].map(x => (x || '').trim()).filter(Boolean)
+    .filter((x, i, a) => a.findIndex(y => y.toLowerCase() === x.toLowerCase()) === i).join(' - ');
+  const linhasCab = [
+    [titulo || 'Pedigree', 13],
+    [(perfil.cidade || '').toUpperCase(), 9],
+    [perfil.email_contato, 9],
+    [perfil.telefone ? 'Tel. ' + perfil.telefone : '', 9]
+  ].filter(([t]) => t && String(t).trim());
+  let y = 13;
+  doc.setTextColor(0, 0, 0);
+  doc.setFont('helvetica', 'bold');
+  linhasCab.forEach(([t, tam], i) => {
+    doc.setFontSize(tam);
+    doc.text(textoPdf(t), W / 2, y, { align: 'center', maxWidth: W - 2 * M });
+    y += tam * PT * 1.25 + (i === 0 ? 0.6 : 0);
+  });
+
+  // Árvore
+  const topo = Math.max(y + 3, 36), base = 281, H = base - topo;
+  const colunas = [ // x, largura, altura do quadro, tamanho da anilha, tamanho do texto
+    { x: 10, w: 32, h: 72, fa: 10, ft: 8 },
+    { x: 46, w: 37, h: H / 2 * 0.72, fa: 9, ft: 7.5 },
+    { x: 87, w: 38, h: H / 4 * 0.92, fa: 8.5, ft: 7 },
+    { x: 129, w: 37, h: H / 8 * 0.9, fa: 8, ft: 6.5 },
+    { x: 170, w: 30, h: H / 16 * 0.86, fa: 7, ft: 6 }
+  ];
+  const CORES_PDF = { M: [226, 247, 250], F: [252, 228, 246], X: [255, 255, 255] };
+  const centro = n => { const g = Math.floor(Math.log2(n)); const slot = H / 2 ** g; return topo + (n - 2 ** g + 0.5) * slot; };
+  const caixa = n => { const g = Math.floor(Math.log2(n)); const c = colunas[g]; const cy = centro(n); return { g, c, x: c.x, y: cy - c.h / 2, w: c.w, h: c.h, cy }; };
+
+  // Linhas de ligação
+  doc.setDrawColor(120, 120, 120);
+  doc.setLineWidth(0.2);
+  for (let n = 1; n < 16; n++) {
+    const b = caixa(n), f1 = caixa(2 * n), f2 = caixa(2 * n + 1);
+    const xm = (b.x + b.w + f1.x) / 2;
+    doc.line(b.x + b.w, b.cy, xm, b.cy);
+    doc.line(xm, f1.cy, xm, f2.cy);
+    doc.line(xm, f1.cy, f1.x, f1.cy);
+    doc.line(xm, f2.cy, f2.x, f2.cy);
+  }
+
+  // Quadros
+  for (let n = 1; n < 32; n++) {
+    const b = caixa(n), p = pos[n];
+    const cor = n === 1 ? CORES_PDF.X : n % 2 === 0 ? CORES_PDF.M : CORES_PDF.F;
+    doc.setFillColor(...cor);
+    doc.setDrawColor(70, 70, 70);
+    doc.setLineWidth(0.25);
+    doc.rect(b.x, b.y, b.w, b.h, 'FD');
+    if (!p) continue;
+    const pad = 1.4, larg = b.w - 2 * pad, limite = b.y + b.h - pad;
+    let ty = b.y + pad + b.c.fa * PT * 0.85;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(b.c.fa);
+    doc.text(textoPdf(anilha(p)), b.x + pad, ty, { maxWidth: larg });
+    ty += b.c.fa * PT * 0.5;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(b.c.ft);
+    const lh = b.c.ft * PT * 1.18;
+    const sexoCor = [p.sexo ? sexoTxt(p.sexo) : '', p.cor].filter(Boolean).join(' · ');
+    const reg = meuRegistro(p.id);
+    const obs = n === 1 ? textoPrincipal : reg && reg.observacoes;
+    const partes = [];
+    if (p.nome) partes.push('"' + p.nome + '"');
+    if (sexoCor) partes.push(sexoCor);
+    if (n === 1 && p.nascimento) partes.push('Nascimento: ' + dataBR(p.nascimento));
+    if (obs) String(obs).split(/\r?\n/).forEach(l => partes.push(l));
+    let linhas = [];
+    partes.forEach(t => { linhas = linhas.concat(doc.splitTextToSize(textoPdf(t), larg)); });
+    const cabem = Math.max(0, Math.floor((limite - ty) / lh));
+    if (linhas.length > cabem) {
+      linhas = linhas.slice(0, cabem);
+      if (cabem) {
+        let ult = linhas[cabem - 1].replace(/\s+$/, '');
+        while (ult && doc.getTextWidth(ult + '...') > larg) ult = ult.slice(0, -1);
+        linhas[cabem - 1] = ult + '...';
+      }
+    }
+    linhas.forEach(l => { ty += lh; doc.text(l, b.x + pad, ty - lh * 0.25); });
+  }
+
+  // Rodapé discreto
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.setTextColor(120, 120, 120);
+  doc.text(textoPdf(`Gerado pelo app ${C.nomeApp} (desenvolvido por ${C.criador})`), M, 290);
+  doc.text('Emitido em ' + new Date().toLocaleDateString('pt-BR'), W - M, 290, { align: 'right' });
+
+  doc.setProperties({ title: textoPdf('Pedigree ' + anilha(alvo)), author: textoPdf(titulo), creator: textoPdf(`${C.nomeApp} (desenvolvido por ${C.criador})`) });
+  const arquivo = 'pedigree-' + anilha(alvo).replace(/[^0-9A-Za-z]+/g, '-').replace(/^-|-$/g, '') + '.pdf';
+  doc.save(arquivo);
 }
 
 function vConta() {
@@ -474,7 +675,7 @@ function render() {
   const r = rota();
   let html;
   if (r.nome === 'conta') html = vConta();
-  else if (r.nome === 'pedigree') html = vPedigree();
+  else if (r.nome === 'pedigree') html = vPedigree(r.a);
   else if (r.nome === 'pombo') html = vFicha(r.a);
   else if (r.nome === 'novo') html = state.dados.carregado ? vFormPombo(null, r.q) : shell('novo', 'Cadastrar pombo', '', erroDados() || carregandoHtml, { voltar: '#/plantel' });
   else if (r.nome === 'editar') {
@@ -550,9 +751,17 @@ async function recarregarTudo(pid) {
 
 // ---------- Eventos ----------
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-auth],[data-sair],[data-filtro],[data-hist],[data-sexo],[data-remover],[data-apagar-evento]');
+  const t = e.target.closest('[data-pdf],[data-auth],[data-sair],[data-filtro],[data-hist],[data-sexo],[data-remover],[data-apagar-evento]');
   if (!t) return;
   const d = t.dataset;
+  if (d.pdf) {
+    const rotulo = t.innerHTML;
+    t.disabled = true; t.textContent = 'Gerando PDF…';
+    try { await gerarPedigreePDF(d.pdf, $('#ped-texto') ? $('#ped-texto').value.trim() : ''); toast('Pedigree gerado.'); }
+    catch (err) { toast(err.message && /PDF/.test(err.message) ? err.message : 'Não foi possível gerar o PDF: ' + (err.message || err)); }
+    t.disabled = false; t.innerHTML = rotulo;
+    return;
+  }
   if (d.auth) { state.auth = d.auth; state.authMsg = null; render(); return; }
   if (t.hasAttribute('data-sair')) { await sb.auth.signOut(); state.auth = 'entrar'; history.replaceState(null, '', location.pathname); return; }
   if (d.filtro) {
@@ -593,6 +802,7 @@ document.addEventListener('click', async e => {
 
 document.addEventListener('input', e => {
   if (e.target.id === 'q') { state.q = e.target.value; $('#lista').innerHTML = listaHtml(); }
+  if (e.target.id === 'q-ped') { state.q = e.target.value; $('#lista-ped').innerHTML = listaPedigreeHtml(); }
   if (['f-num', 'f-ano', 'f-pais'].includes(e.target.id)) verificarAnilha();
 });
 
