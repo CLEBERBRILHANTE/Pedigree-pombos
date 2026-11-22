@@ -492,8 +492,8 @@ function vFormPombo(r, q) {
     <button class="btn btn-primary btn-block full" type="submit">${editando ? 'Salvar alterações' : 'Cadastrar pombo'}</button>
   </form>
   ${editando ? `<details class="remover"><summary>Tirar este pombo do meu plantel</summary>
-    <p class="hint">Se você vendeu, cedeu ou perdeu o pombo, não apague: mude a situação acima. Assim a passagem dele pelo seu pombal continua no histórico. Apague só se cadastrou por engano.</p>
-    <label class="check"><input type="checkbox" id="rm-registros"> Apagar também os registros que eu fiz no histórico dele</label>
+    <p class="hint">Se você vendeu, cedeu ou perdeu o pombo, não precisa tirar: mude a situação acima. Use esta opção só se cadastrou por engano.</p>
+    <p class="hint">O histórico dele (provas, prêmios, entradas e saídas) fica guardado e continua aparecendo para todos. Depois de tirar, você não consegue mais alterar nem apagar os registros que fez.</p>
     <button class="btn btn-perigo" type="button" data-remover="${esc(r.id)}">Tirar do meu plantel</button>
   </details>` : ''}`;
   return shell(editando ? 'editar' : 'novo', editando ? 'Editar pombo' : filho ? 'Cadastrar ancestral' : 'Cadastrar pombo',
@@ -1046,10 +1046,9 @@ document.addEventListener('click', async e => {
     return;
   }
   if (d.remover) {
-    const apagar = $('#rm-registros') && $('#rm-registros').checked;
-    if (!confirm(apagar ? 'Tirar este pombo do seu plantel e apagar os registros que você fez no histórico dele?' : 'Tirar este pombo do seu plantel?')) return;
+    if (!confirm('Tirar este pombo do seu plantel? O histórico dele fica guardado.')) return;
     t.disabled = true;
-    const { data: fotosApagar, error } = await sb.rpc('remover_do_plantel', { p_plantel: d.remover, p_apagar_registros: !!apagar });
+    const { data: fotosApagar, error } = await sb.rpc('remover_do_plantel', { p_plantel: d.remover });
     if (error) { t.disabled = false; toast(traduzir(error.message)); return; }
     if (Array.isArray(fotosApagar) && fotosApagar.length) sb.storage.from('fotos').remove(fotosApagar);
     state.ficha = { id: null };
