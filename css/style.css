@@ -310,3 +310,6 @@ main.view > .stack > [data-adm-atualizar] { justify-self: start; }
 .faq p { margin: 10px 0 0; color: var(--muted); line-height: 1.5; }
 @media (min-width: 600px) { .contatos { grid-template-columns: repeat(auto-fit, minmax(240px, max-content)); } .ajuda-contato, .faq { max-width: 760px; } }
 @media (min-width: 600px) { .ajuda-login .contatos { grid-template-columns: 1fr; } }
+
+/* Irmãos na ficha */
+.subtit { font-size: 14px; font-weight: 600; color: var(--fg); margin: 6px 0 0; }
