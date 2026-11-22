@@ -11,6 +11,14 @@
 --  * As funções da tela de administrador conferem no banco se quem pediu é administrador.
 --    Esconder o botão no app é só visual: a proteção de verdade está aqui.
 
+-- Proteção: depois do 06_seguranca_dados_por_usuario.sql este arquivo não deve ser rodado de novo
+-- (ele voltaria as regras antigas). Se aparecer o erro abaixo, está tudo certo: não precisa rodar.
+do $$ begin
+  if to_regclass('public.dados_pombo') is not null then
+    raise exception 'Este arquivo é antigo e não precisa ser rodado de novo: o 06 já foi aplicado.';
+  end if;
+end $$;
+
 create table if not exists public.administradores (
   user_id uuid primary key references auth.users (id) on delete cascade,
   criado_em timestamptz not null default now()
