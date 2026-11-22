@@ -160,13 +160,13 @@ function rota() {
   const h = location.hash.replace(/^#\/?/, '');
   const [caminho, busca = ''] = h.split('?');
   const partes = caminho.split('/').filter(Boolean);
-  const nomes = ['plantel', 'novo', 'pombo', 'editar', 'evento', 'pedigree', 'conta', 'admin', 'ajuda', 'vacinas'];
+  const nomes = ['plantel', 'novo', 'pombo', 'editar', 'evento', 'pedigree', 'conta', 'admin', 'ajuda', 'vacinas', 'ler'];
   const nome = nomes.includes(partes[0]) ? partes[0] : 'plantel';
   return { nome, a: partes[1] || null, b: partes[2] || null, q: new URLSearchParams(busca) };
 }
 
 function shell(r, titulo, sub, corpo, { voltar = null, direita = '' } = {}) {
-  const ativa = ['pombo', 'editar', 'evento'].includes(r) ? 'plantel' : r;
+  const ativa = ['pombo', 'editar', 'evento'].includes(r) ? 'plantel' : r === 'ler' ? 'novo' : r;
   const aba = (n, ico, label) => `<a href="#/${n}" ${ativa === n ? 'aria-current="page"' : ''}>${ico}<span>${label}</span></a>`;
   const ajuda = r === 'ajuda' ? '' : `<a class="icon-btn so-celular" href="#/ajuda" aria-label="Ajuda">${I.help}</a>`;
   return `<header class="topbar wrap">${voltar ? `<a class="icon-btn" href="${voltar}" aria-label="Voltar">${I.back}</a>` : ''}
@@ -233,14 +233,15 @@ function vPlantel() {
     return shell('plantel', 'Plantel', nomePombal(), `${erroDados()}
       <div class="vazio">${I.list}<h2>Nenhum pombo ainda</h2>
         <p>Cadastre seu primeiro pombo pela anilha. Se ele já passou por outro pombal que usa o app, o histórico dele aparece na hora.</p>
-        <a class="btn btn-primary" href="#/novo">${I.plus}Cadastrar pombo</a></div>`, { direita: novo });
+        <a class="btn btn-primary" href="#/novo">${I.plus}Cadastrar pombo</a>
+        <a class="btn btn-ghost" href="#/ler">${I.camera}Ler pedigree por foto ou PDF</a></div>`, { direita: novo });
   }
   const ativos = todos.filter(r => r.situacao === 'ativo').map(r => pombo(r.pombo_id)).filter(Boolean);
   const noPlantel = todos.filter(r => r.situacao !== 'referencia').length;
   const ancestrais = todos.length - noPlantel;
   const chip = (v, l) => `<button type="button" class="chip" data-filtro="${v}" aria-pressed="${state.filtro === v}">${l}</button>`;
   return shell('plantel', 'Plantel', nomePombal(), `${erroDados()}
-    <div class="stats"><a class="stats-link so-celular" href="#/vacinas">${I.vacina}Vacinas</a><span><b>${ativos.length}</b> no pombal</span><span><b>${ativos.filter(p => p.sexo === 'M').length}</b> machos</span><span><b>${ativos.filter(p => p.sexo === 'F').length}</b> fêmeas</span><span><b>${noPlantel}</b> no plantel</span></div>
+    <div class="stats"><a class="stats-link so-celular" href="#/vacinas">${I.vacina}Vacinas</a><a class="stats-link" href="#/ler">${I.camera}Ler pedigree</a><span><b>${ativos.length}</b> no pombal</span><span><b>${ativos.filter(p => p.sexo === 'M').length}</b> machos</span><span><b>${ativos.filter(p => p.sexo === 'F').length}</b> fêmeas</span><span><b>${noPlantel}</b> no plantel</span></div>
     ${avisoVacinasHtml()}
     <div class="search">${I.search}<input class="input" id="q" type="search" placeholder="Buscar por anilha, nome, cor ou pais" value="${esc(state.q)}" aria-label="Buscar"></div>
     <div class="chips">${chip('todos', 'Todos')}${chip('ativo', 'No pombal')}${chip('M', '♂ Machos')}${chip('F', '♀ Fêmeas')}${chip('referencia', `Ancestrais${ancestrais ? ` (${ancestrais})` : ''}`)}${chip('saiu', 'Saíram')}</div>
@@ -490,6 +491,7 @@ function vFormPombo(r, q) {
     ${volta ? `<input type="hidden" id="f-volta" value="${esc(volta)}">` : ''}
     ${filho ? `<input type="hidden" id="f-filho" value="${esc(filho.id)}"><input type="hidden" id="f-lado" value="${lado}">
       <p class="msg info full">Você está cadastrando ${lado === 'pai' ? 'o <b>pai</b>' : 'a <b>mãe</b>'} de <b class="mono">${esc(anilha(filho))}</b>${filho.nome ? ' (' + esc(filho.nome) + ')' : ''}. Ao salvar, ${lado === 'pai' ? 'ele' : 'ela'} já fica ligad${lado === 'pai' ? 'o' : 'a'} no pedigree.</p>` : ''}
+    ${!editando && !filho ? `<p class="msg info full">Tem o pedigree deste pombo? <a href="#/ler">Leia a foto ou o PDF com IA</a> e cadastre o pombo e os ancestrais de uma vez.</p>` : ''}
     <p class="msg erro full" id="f-erro" role="alert" hidden></p>
     <div class="full field-group">
       <span class="label">Anilha</span>
@@ -855,7 +857,8 @@ async function carregarAdmin(r) {
     const [res, us] = await Promise.all([sb.rpc('admin_resumo'), sb.rpc('admin_usuarios')]);
     const err = res.error || us.error;
     if (err) { a.erro = faltaSQL(err.message) ? 'Falta rodar o arquivo 04_admin.sql no Supabase.' : traduzir(err.message); return; }
-    Object.assign(a, { carregado: true, erro: null, resumo: res.data, usuarios: us.data || [] });
+    const ia = await sb.rpc('admin_leituras_ia');
+    Object.assign(a, { carregado: true, erro: null, resumo: res.data, usuarios: us.data || [], ia: ia.error ? null : ia.data });
   }
   if (r.a === 'usuario' && r.b && !a.plantel[r.b]) {
     const { data, error } = await sb.rpc('admin_plantel_do_usuario', { p_usuario: r.b });
@@ -928,6 +931,7 @@ function vAdmin(r) {
       ${card(s.pombos, 'pombos no app', `${num(s.pombos_ativos || 0)} em algum pombal`)}
       ${card(s.registros, 'registros no histórico', `${num(s.provas || 0)} provas`)}
       ${card(s.fotos, 'fotos', `${tamanho(s.fotos_bytes)} de 1 GB grátis`)}
+      ${a.ia ? card(a.ia.mes, 'leituras com IA este mês', `custo aprox. US$ ${num(a.ia.custo_mes, 2)} · ${num(a.ia.usuarios_mes)} usuários · total ${num(a.ia.total)} (US$ ${num(a.ia.custo_total, 2)})`) : ''}
     </div>
     <div class="chips">${chip('usuarios', 'Usuários e pombais')}${chip('pombos', 'Pombos')}</div>
     <div class="search">${I.search}<input class="input" id="q-adm" type="search" placeholder="${usuarios ? 'Buscar por e-mail, nome, pombal ou cidade' : 'Buscar por anilha, nome ou cor'}" value="${esc(a.busca)}" aria-label="Buscar"></div>
@@ -1149,6 +1153,244 @@ async function confirmarVacinacao(form) {
   toast(n ? `${n} ${n === 1 ? 'pombo vacinado' : 'pombos vacinados'}. Registrado no histórico de cada um.` : 'Esses pombos já tinham esta vacina registrada nessa data.');
 }
 
+// ----- Ler pedigree com IA -----
+// O app manda a foto/PDF para o servidor (api/ler-pedigree), que usa a IA da Anthropic.
+// A chave da IA fica só no servidor. Os pombos lidos aparecem numa prévia para conferir antes de cadastrar.
+const lerVazio = () => ({ arquivo: null, nome: '', imagem: null, lendo: false, erro: null, cota: state.ler ? state.ler.cota : undefined,
+  pombos: null, aviso: '', modelo: '', salvando: false, progresso: '', resultado: null });
+state.ler = lerVazio();
+const MAX_PDF = 3 * 1024 * 1024;
+
+// Mesmo jeito do banco de comparar anilhas: número sem símbolos e zeros à esquerda, ano com 4 dígitos.
+function chaveAnilha(a) {
+  if (!a) return '';
+  let ano = Number(a.ano);
+  if (ano < 100) ano += ano <= (new Date().getFullYear() % 100) + 1 ? 2000 : 1900;
+  const n = String(a.numero || '').toUpperCase().replace(/[^0-9A-Z]/g, '').replace(/^0+/, '') || '0';
+  return `${String(a.pais || '').toUpperCase()}|${ano}|${n}`;
+}
+const anilhaLida = p => `${p.numero}/${String(p.ano || '').slice(-2).padStart(2, '0')} ${p.pais}`;
+function meuPomboDaAnilha(a) {
+  const k = chaveAnilha(a);
+  for (const p of state.dados.pombos.values()) if (chaveAnilha(p) === k) return p;
+  return null;
+}
+
+async function carregarCotaLeitura() {
+  const { data, error } = await sb.rpc('minhas_leituras_ia');
+  state.ler.cota = error ? { erro: faltaSQL(error.message) ? 'A leitura com IA ainda não foi ativada (falta rodar o arquivo 10_leitura_ia.sql no Supabase).' : traduzir(error.message) } : data;
+}
+
+function cotaHtml() {
+  const c = state.ler.cota;
+  if (c === undefined) return '';
+  if (c.erro) return `<p class="msg erro">${esc(c.erro)}</p>`;
+  if (c.admin) return `<p class="hint">Você é administrador: leituras sem limite.</p>`;
+  const dia = Math.max(0, c.limite_dia - c.hoje), mes = Math.max(0, c.limite_mes - c.mes);
+  const resta = Math.min(dia, mes);
+  if (!resta) return `<p class="msg erro">Você já usou todas as leituras ${dia ? 'deste mês' : 'de hoje'}. ${dia ? 'No mês que vem' : 'Amanhã'} tem mais.</p>`;
+  return `<p class="hint">Você ainda pode fazer <b>${resta}</b> ${resta === 1 ? 'leitura' : 'leituras'} hoje (limite de ${c.limite_dia} por dia e ${c.limite_mes} por mês).</p>`;
+}
+
+function vLer() {
+  const L = state.ler;
+  const titulo = 'Ler pedigree';
+  if (!state.dados.carregado) return shell('ler', titulo, '', erroDados() || carregandoHtml, { voltar: '#/plantel' });
+  if (L.resultado) return vLerResultado();
+  if (L.pombos) return vLerPrevia();
+  const semCota = L.cota && (L.cota.erro || (!L.cota.admin && (L.cota.hoje >= L.cota.limite_dia || L.cota.mes >= L.cota.limite_mes)));
+  const arquivo = L.arquivo ? `<div class="ler-arquivo">${L.imagem ? `<img src="${esc(L.imagem)}" alt="Pedigree escolhido">` : `<span class="ler-pdf">PDF</span>`}
+      <b>${esc(L.nome)}</b></div>` : '';
+  return shell('ler', titulo, 'Foto ou PDF, com inteligência artificial', `
+    <section class="card ler-card">
+      <p>Tire uma foto do pedigree ou escolha o PDF. A inteligência artificial lê as anilhas, os nomes e os pais, e mostra tudo para você <b>conferir antes de cadastrar</b>.</p>
+      <ul class="ler-dicas hint"><li>Foto de frente, com boa luz, sem sombra e sem cortar as bordas.</li><li>Se tiver o PDF, ele dá o melhor resultado.</li><li>Lê até os trisavós (5 gerações).</li></ul>
+      ${arquivo}
+      <label class="btn ${L.arquivo ? 'btn-ghost' : 'btn-primary'} ler-escolher">${I.camera}${L.arquivo ? 'Trocar a foto ou o PDF' : 'Escolher foto ou PDF'}
+        <input type="file" id="ler-arquivo" accept="image/*,application/pdf" hidden></label>
+      ${L.erro ? `<p class="msg erro" role="alert">${esc(L.erro)}</p>` : ''}
+      ${state.admin && L.arquivo ? `<div class="field"><label for="ler-modelo">Modelo da IA (só o administrador vê)</label>
+        <select class="input" id="ler-modelo"><option value="claude-haiku-5-5">Haiku 5.5 (mais barato)</option><option value="claude-sonnet-5-5" ${L.modelo === 'claude-sonnet-5-5' ? 'selected' : ''}>Sonnet 5.5 (mais preciso)</option></select></div>` : ''}
+      ${L.arquivo ? `<button type="button" class="btn btn-primary btn-block" data-ler-iniciar ${L.lendo || semCota ? 'disabled' : ''}>${L.lendo ? 'Lendo o pedigree… pode levar até 1 minuto' : 'Ler o pedigree'}</button>` : ''}
+      ${cotaHtml()}
+    </section>`, { voltar: '#/plantel' });
+}
+
+function vLerPrevia() {
+  const L = state.ler;
+  const principal = L.pombos.find(p => p.posicao === 1);
+  const itens = L.pombos.map(p => {
+    const n = p.posicao, f = n % 2 === 1 && n > 1;
+    const ja = meuPomboDaAnilha(p);
+    const rot = n === 1 ? 'Pombo do pedigree' : rotuloPos(n);
+    return `<li class="ler-item ${n === 1 ? (p.sexo === 'F' ? 'f' : 'm') : f ? 'f' : 'm'}" data-pos="${n}">
+      <div class="ler-topo">${n === 1 ? `<b>${rot}</b>` : `<label class="check"><input type="checkbox" name="ler-inc" value="${n}" checked> <b>${rot}</b></label>`}
+        ${ja && meuRegistro(ja.id) ? '<span class="tag ok">Já está no seu plantel</span>' : ''}</div>
+      ${ja && meuRegistro(ja.id) ? '<p class="hint">Só completa o que estiver em branco no cadastro que você já tem.</p>' : ''}
+      <div class="ler-campos">
+        <div class="field"><label for="l-an-${n}">Anilha</label><input class="input mono" id="l-an-${n}" maxlength="40" value="${esc(anilhaLida(p))}" autocomplete="off"></div>
+        <div class="field"><label for="l-nome-${n}">Nome</label><input class="input" id="l-nome-${n}" maxlength="80" value="${esc(p.nome)}"></div>
+        <div class="field"><label for="l-cor-${n}">Cor</label><input class="input" id="l-cor-${n}" maxlength="60" list="cores" value="${esc(p.cor)}"></div>
+        ${n === 1 ? `<div class="field"><label for="l-sexo-1">Sexo</label><select class="input" id="l-sexo-1"><option value="">Não informado</option><option value="M" ${p.sexo === 'M' ? 'selected' : ''}>♂ Macho</option><option value="F" ${p.sexo === 'F' ? 'selected' : ''}>♀ Fêmea</option></select></div>
+          <div class="field"><label for="l-nasc-1">Nascimento</label><input class="input" id="l-nasc-1" type="date" value="${esc(p.nascimento)}"></div>` : ''}
+        <div class="field ler-obs"><label for="l-obs-${n}">Títulos e observações</label><textarea class="input" id="l-obs-${n}" maxlength="4000" rows="2">${esc(p.observacoes)}</textarea></div>
+      </div></li>`;
+  }).join('');
+  const n = L.pombos.length;
+  return shell('ler', 'Confira o que a IA leu', `${n} ${n === 1 ? 'pombo encontrado' : 'pombos encontrados'}`, `
+    <form id="f-ler" class="ler-form" novalidate>
+      <p class="msg info">Confira principalmente as <b>anilhas</b>: a IA pode errar um número. Corrija o que precisar antes de cadastrar.${L.modelo && state.admin ? ` <span class="hint">(modelo: ${esc(L.modelo)})</span>` : ''}</p>
+      ${L.aviso ? `<p class="msg erro">${esc(L.aviso)}</p>` : ''}
+      ${!principal ? '<p class="msg erro">A IA não achou o pombo principal do pedigree. Tente outra foto ou cadastre pelo botão Cadastrar.</p>' : `
+      <div class="field ler-sit"><label for="l-sit">O pombo ${esc(anilhaLida(principal))} é</label><select class="input" id="l-sit">${SIT_FORM.map(([v, l]) => `<option value="${v}" ${v === 'ativo' ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`}
+      <p class="msg erro" id="l-erro" role="alert" hidden></p>
+      <datalist id="cores">${CORES.map(c => `<option value="${c}">`).join('')}</datalist>
+      <ul class="ler-lista">${itens}</ul>
+      <p class="hint">Desmarcar um ancestral tira também os pais dele. O que faltar você pode cadastrar depois, tocando no quadro vazio do pedigree.</p>
+      <div class="vac-rodape ler-rodape">${principal ? `<button class="btn btn-primary btn-block" type="submit" id="l-ok">Cadastrar</button>` : ''}
+        <button class="btn btn-ghost btn-block" type="button" data-ler-outro>Ler outro pedigree</button></div>
+    </form>`, { voltar: '#/ler' });
+}
+
+function vLerResultado() {
+  const R = state.ler.resultado;
+  return shell('ler', 'Pedigree cadastrado', '', `
+    <section class="card ler-card">
+      <p class="msg ${R.erros.length ? 'erro' : 'ok'}">${R.salvos ? `<b>${R.salvos} ${R.salvos === 1 ? 'pombo cadastrado' : 'pombos cadastrados'}</b> e ligados como pais e filhos.` : 'Nenhum pombo foi cadastrado.'}</p>
+      ${R.erros.length ? `<div class="msg erro"><p>Não deu para cadastrar:</p><ul>${R.erros.map(e => `<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
+      <div class="actions">${R.pomboId ? `<a class="btn btn-primary" href="#/pedigree/${esc(R.pomboId)}">${I.tree}Ver o pedigree</a><a class="btn btn-ghost" href="#/pombo/${esc(R.pomboId)}">Abrir a ficha</a>` : ''}</div>
+      <button type="button" class="btn btn-ghost btn-block" data-ler-outro>Ler outro pedigree</button>
+    </section>`, { voltar: '#/plantel' });
+}
+
+function contarLer() {
+  const b = $('#l-ok'); if (!b) return;
+  const n = posicoesIncluidas().length;
+  b.textContent = `Cadastrar ${n} ${n === 1 ? 'pombo' : 'pombos'}`;
+}
+
+// Posições marcadas. Se um ancestral foi desmarcado, os pais dele também ficam de fora.
+function posicoesIncluidas() {
+  const marcado = new Set([1]);
+  document.querySelectorAll('input[name="ler-inc"]').forEach(c => { if (c.checked) marcado.add(Number(c.value)); });
+  const lidas = (state.ler.pombos || []).map(p => p.posicao).sort((a, b) => a - b);
+  const inc = new Set();
+  for (const n of lidas) if (marcado.has(n) && (n === 1 || inc.has(n >> 1))) inc.add(n);
+  return [...inc];
+}
+
+function escolherArquivoLer(input) {
+  const f = input.files && input.files[0];
+  if (!f) return;
+  const L = state.ler;
+  if (L.imagem) URL.revokeObjectURL(L.imagem);
+  const pdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
+  if (pdf && f.size > MAX_PDF) { L.erro = 'Este PDF é grande demais (o limite é 3 MB). Tente tirar uma foto da folha.'; render(); return; }
+  if (!pdf && !/^image\//.test(f.type)) { L.erro = 'Escolha uma foto (JPG, PNG) ou um PDF.'; render(); return; }
+  Object.assign(L, { arquivo: f, nome: f.name || (pdf ? 'pedigree.pdf' : 'foto'), imagem: pdf ? null : URL.createObjectURL(f), erro: null });
+  render();
+}
+
+const paraBase64 = blob => new Promise((ok, falha) => {
+  const r = new FileReader();
+  r.onload = () => ok(String(r.result).replace(/^data:[^,]*,/, ''));
+  r.onerror = () => falha(new Error('Não consegui abrir o arquivo.'));
+  r.readAsDataURL(blob);
+});
+
+async function lerPedigree() {
+  const L = state.ler;
+  if (!L.arquivo || L.lendo) return;
+  L.modelo = $('#ler-modelo') ? $('#ler-modelo').value : '';
+  L.lendo = true; L.erro = null; render();
+  try {
+    const f = L.arquivo;
+    const pdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
+    // Foto: diminui para no máximo 2000 px (fica menor que 1 MB e a IA lê bem).
+    const blob = pdf ? f : await comprimirFoto(f, 2000, 0.85);
+    const corpo = { tipo: pdf ? 'application/pdf' : 'image/jpeg', arquivo: await paraBase64(blob), modelo: L.modelo || undefined };
+    const { data: s } = await sb.auth.getSession();
+    if (!s.session) throw new Error('Sua sessão expirou. Entre de novo.');
+    let r;
+    try {
+      r = await fetch('api/ler-pedigree', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + s.session.access_token }, body: JSON.stringify(corpo) });
+    } catch (e) { throw new Error('Sem conexão com a internet. Tente de novo.'); }
+    const resp = await r.json().catch(() => null);
+    if (!r.ok || !resp) throw new Error((resp && resp.erro) || (r.status === 404 ? 'A leitura com IA ainda não está disponível neste endereço.' : r.status === 413 ? 'Arquivo grande demais.' : 'A leitura falhou. Tente de novo.'));
+    if (!resp.pombos.length) throw new Error(resp.aviso || 'A IA não encontrou nenhum pombo nesta imagem. Tente uma foto mais nítida.');
+    Object.assign(L, { pombos: resp.pombos, aviso: resp.aviso || '', modelo: resp.modelo || '' });
+  } catch (err) {
+    L.erro = err.message || String(err);
+  }
+  L.lendo = false;
+  render();
+  window.scrollTo(0, 0);
+  carregarCotaLeitura().then(() => { if (rota().nome === 'ler' && !state.ler.pombos) render(); });
+}
+
+// Cadastra os pombos lidos: primeiro os mais antigos (trisavós), por último o pombo do pedigree,
+// para cada um já encontrar o pai e a mãe cadastrados.
+async function salvarLeitura(form) {
+  const L = state.ler;
+  const v = sel => { const el = $(sel); return el ? el.value.trim() : ''; };
+  const inc = posicoesIncluidas();
+  const lidos = new Map();
+  for (const n of inc) {
+    const a = lerAnilha(v(`#l-an-${n}`));
+    if (!a) return mostrarErro('#l-erro', `${n === 1 ? 'Pombo do pedigree' : rotuloPos(n)}: falta a anilha. Escreva ou desmarque este pombo.`);
+    if (a.erro || !/^\d{2}(\d{2})?$/.test(a.ano)) return mostrarErro('#l-erro', `${n === 1 ? 'Pombo do pedigree' : rotuloPos(n)}: ${a.erro || 'confira o ano da anilha.'}`);
+    lidos.set(n, { anel: a, nome: v(`#l-nome-${n}`), cor: v(`#l-cor-${n}`), obs: v(`#l-obs-${n}`),
+      sexo: n === 1 ? v('#l-sexo-1') : (n % 2 === 0 ? 'M' : 'F'), nascimento: n === 1 ? v('#l-nasc-1') : '' });
+  }
+  const situacao = v('#l-sit') || 'ativo';
+  const btn = $('#l-ok');
+  btn.disabled = true;
+  const erros = [];
+  const salvos = new Map(); // chave da anilha -> dados enviados (o mesmo ancestral pode aparecer duas vezes)
+  let pomboId = null, total = 0;
+  const ordem = [...inc].sort((a, b) => b - a);
+  for (let i = 0; i < ordem.length; i++) {
+    const n = ordem[i], l = lidos.get(n);
+    btn.textContent = `Cadastrando ${i + 1} de ${ordem.length}…`;
+    const anel = x => x ? { numero: x.numero, ano: String(x.ano), pais: x.pais } : null;
+    const pai = lidos.has(2 * n) ? anel(lidos.get(2 * n).anel) : null;
+    const mae = lidos.has(2 * n + 1) ? anel(lidos.get(2 * n + 1).anel) : null;
+    const k = chaveAnilha(l.anel);
+    const ex = meuPomboDaAnilha(l.anel), reg = ex && meuRegistro(ex.id);
+    let d;
+    if (salvos.has(k)) {
+      const b = salvos.get(k);
+      d = Object.assign({}, b, { pai: b.pai || pai, mae: b.mae || mae, nome: b.nome || l.nome, cor: b.cor || l.cor, observacoes: b.observacoes || l.obs });
+      if (n === 1) d.situacao = situacao;
+    } else if (reg) {
+      // Já está no meu plantel: mantém o que eu já tinha e só completa o que está em branco.
+      const sit = n === 1 && reg.situacao === 'referencia' ? situacao : reg.situacao;
+      d = { plantel_id: reg.id, numero: ex.numero, ano: String(ex.ano), pais: ex.pais,
+        nome: ex.nome || l.nome, sexo: ex.sexo || l.sexo, cor: ex.cor || l.cor, nascimento: ex.nascimento || l.nascimento,
+        pai: ex.pai_id ? anel(pombo(ex.pai_id)) : pai, mae: ex.mae_id ? anel(pombo(ex.mae_id)) : mae,
+        situacao: sit, origem: sit === 'referencia' ? '' : reg.origem || '', origem_obs: sit === 'referencia' ? '' : reg.origem_obs || '',
+        data_entrada: sit === 'referencia' ? '' : reg.data_entrada || '', data_saida: reg.data_saida || '', saida_obs: reg.saida_obs || '',
+        observacoes: reg.observacoes || l.obs };
+    } else {
+      const sit = n === 1 ? situacao : 'referencia';
+      d = { plantel_id: null, numero: l.anel.numero, ano: l.anel.ano, pais: l.anel.pais,
+        nome: l.nome, sexo: l.sexo, cor: l.cor, nascimento: l.nascimento, pai, mae, situacao: sit,
+        origem: '', origem_obs: '', data_entrada: '', data_saida: '', saida_obs: '', observacoes: l.obs };
+    }
+    const { data, error } = await sb.rpc('salvar_pombo', { d });
+    if (error) { erros.push(`${anilhaLida(l.anel)} (${n === 1 ? 'pombo do pedigree' : rotuloPos(n).toLowerCase()}): ${traduzir(error.message)}`); continue; }
+    if (!salvos.has(k)) total++;
+    salvos.set(k, Object.assign({}, d, { plantel_id: data.plantel_id }));
+    if (n === 1) pomboId = data.pombo_id;
+  }
+  await recarregarTudo(pomboId);
+  state.ficha = { id: null };
+  L.resultado = { salvos: total, erros, pomboId };
+  render();
+  window.scrollTo(0, 0);
+  toast(erros.length ? 'Alguns pombos não foram cadastrados.' : 'Pedigree cadastrado.');
+}
+
 // ----- Ajuda -----
 function vAjuda() {
   const q = (t, r) => `<details class="faq"><summary>${t}</summary><p>${r}</p></details>`;
@@ -1163,6 +1405,7 @@ function vAjuda() {
       ${q('Vendi, cedi ou perdi um pombo. O que faço?', 'Edite o pombo e mude a situação (vendido, cedido, perdido ou morreu). Assim a passagem dele pelo seu pombal fica registrada. Use "Tirar do meu plantel" só se cadastrou por engano. Mesmo assim, o histórico dele fica guardado.')}
       ${q('Quem vê o histórico do pombo?', 'O histórico (provas, prêmios, saúde, reprodução, entradas e saídas) é compartilhado com todos os pombais que tiverem a mesma anilha. Cada registro só pode ser alterado ou apagado por quem o cadastrou.')}
       ${q('Quem vê o nome, a cor, os pais e as fotos do meu pombo?', 'Só você. Se outro pombal cadastrar a mesma anilha, ele tem a cópia dele desses dados, e o que ele mudar não aparece para você.')}
+      ${q('Dá para cadastrar a partir de um pedigree que já tenho?', 'Sim. Toque em <b>Ler pedigree</b> (na tela Plantel ou em Cadastrar), tire uma foto do pedigree ou escolha o PDF. A inteligência artificial lê as anilhas, nomes, cores e títulos até os trisavós e mostra tudo para você conferir e corrigir. Ao confirmar, o pombo e os ancestrais são cadastrados já ligados como pais e filhos. Confira sempre as anilhas, porque a leitura pode errar. Há um limite de leituras por dia e por mês.')}
       ${q('Como emito o pedigree?', 'Toque em <b>Pedigree</b>, escolha o pombo e baixe o PDF. Ele sai com 5 gerações. No cabeçalho vão os dados de <a href="#/conta">Meu pombal</a>.')}
       ${q('Como coloco as fotos do olho e da cabeça?', 'Abra a ficha do pombo e use a parte de fotos. Dá para tirar a foto na hora ou escolher da galeria.')}
     </section>`);
@@ -1180,6 +1423,7 @@ function render() {
   if (r.nome === 'conta') html = vConta();
   else if (r.nome === 'ajuda') html = vAjuda();
   else if (r.nome === 'vacinas') html = vVacinas(r);
+  else if (r.nome === 'ler') html = vLer();
   else if (r.nome === 'admin') html = vAdmin(r);
   else if (r.nome === 'pedigree') html = vPedigree(r.a);
   else if (r.nome === 'pombo') html = vFicha(r.a);
@@ -1194,6 +1438,7 @@ function render() {
   ajustarCamposSituacao();
   contarVacinar();
   ajustarCamposTipo();
+  contarLer();
 }
 
 // ---------- Dados ----------
@@ -1277,6 +1522,7 @@ async function abrirRota() {
   if (r.nome === 'admin') { await carregarAdmin(r); render(); return; }
   if (!state.dados.carregado && !state.dados.erro) { await carregarPlantel(); }
   if (!state.vac.carregado && ['plantel', 'vacinas'].includes(r.nome)) await carregarVacinas();
+  if (r.nome === 'ler' && !state.ler.pombos && !state.ler.resultado) await carregarCotaLeitura();
   let pid = null;
   if (r.nome === 'pombo' || r.nome === 'evento') pid = r.a;
   if (r.nome === 'editar') { const reg = state.dados.plantel.find(x => x.id === r.a); pid = reg && reg.pombo_id; }
@@ -1291,10 +1537,19 @@ async function recarregarTudo(pid) {
 
 // ---------- Eventos ----------
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-vac-apagar],[data-vac-marcar],[data-adm-aba],[data-adm-atualizar],[data-foto-remover],[data-pdf],[data-auth],[data-sair],[data-filtro],[data-hist],[data-sexo],[data-remover],[data-apagar-evento]');
+  const t = e.target.closest('[data-ler-iniciar],[data-ler-outro],[data-vac-apagar],[data-vac-marcar],[data-adm-aba],[data-adm-atualizar],[data-foto-remover],[data-pdf],[data-auth],[data-sair],[data-filtro],[data-hist],[data-sexo],[data-remover],[data-apagar-evento]');
   if (!t) return;
   const d = t.dataset;
   if (d.fotoRemover) { removerFoto(t); return; }
+  if (t.hasAttribute('data-ler-iniciar')) { lerPedigree(); return; }
+  if (t.hasAttribute('data-ler-outro')) {
+    if (state.ler.imagem) URL.revokeObjectURL(state.ler.imagem);
+    state.ler = lerVazio();
+    if (location.hash !== '#/ler') { location.hash = '#/ler'; return; }
+    render(); window.scrollTo(0, 0);
+    carregarCotaLeitura().then(render);
+    return;
+  }
   if (d.vacMarcar) { document.querySelectorAll('.vac-form > .section input[name="vac-pombo"]').forEach(c => { c.checked = d.vacMarcar === '1'; }); contarVacinar(); return; }
   if (d.vacApagar) {
     if (!confirm('Apagar esta vacina? As vacinações já registradas continuam no histórico dos pombos.')) return;
@@ -1370,6 +1625,8 @@ document.addEventListener('change', e => {
   if (e.target.id === 'f-sit') ajustarCamposSituacao();
   if (e.target.id === 'e-tipo') ajustarCamposTipo();
   if (e.target.name === 'vac-pombo') contarVacinar();
+  if (e.target.id === 'ler-arquivo') escolherArquivoLer(e.target);
+  if (e.target.name === 'ler-inc') contarLer();
   if (e.target.id === 'v-unica') { $('#v-qtd').disabled = $('#v-un').disabled = e.target.checked; }
 });
 
@@ -1488,6 +1745,7 @@ document.addEventListener('submit', e => {
   if (id === 'f-evento') return salvarEvento(e.target);
   if (id === 'f-vacina') return salvarVacina(e.target);
   if (id === 'f-vacinar') return confirmarVacinacao(e.target);
+  if (id === 'f-ler') return salvarLeitura(e.target);
   if (id === 'f-auth') {
     const email = v('#a-email'), senha = $('#a-senha').value;
     if (state.auth === 'criar') {
