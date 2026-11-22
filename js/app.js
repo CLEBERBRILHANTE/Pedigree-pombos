@@ -548,7 +548,8 @@ function verificarAnilha() {
     if (atual && $('#f-plantel').value === atual.id) return;
     $('#ring-aviso').innerHTML = data.no_meu_plantel
       ? `<p class="msg erro">Esta anilha já está no seu plantel. <a href="#/pombo/${esc(data.pombo_id)}">Abrir a ficha</a></p>`
-      : `<p class="msg info"><b>Este pombo já está no app.</b> Passou por ${data.pombais} ${data.pombais === 1 ? 'pombal' : 'pombais'} e tem ${data.registros} ${data.registros === 1 ? 'registro' : 'registros'} no histórico. Ao salvar, ele entra no seu plantel e você passa a ver o histórico completo. Nome, cor e pais já cadastrados são mantidos; você completa o que estiver em branco.</p>`;
+      : `<div class="msg info"><p><b>Este pombo já está no app.</b> Passou por ${data.pombais} ${data.pombais === 1 ? 'pombal' : 'pombais'} e tem ${data.registros} ${data.registros === 1 ? 'registro' : 'registros'} no histórico. Ao salvar, ele entra no seu plantel e você passa a ver o histórico completo.</p>
+        ${data.pode_copiar ? `<label class="check copiar"><input type="checkbox" id="f-copiar" checked> <span><b>Copiar os ancestrais</b> que outro criador cadastrou: nome, cor e nascimento do pombo, pais, avós, bisavós e trisavós. Vira uma cópia sua, que você pode mudar sem mexer no cadastro dele. O que você digitar aqui tem preferência. Fotos e dados do outro criador não são copiados.</span></label>` : ''}</div>`;
   }, 350);
 }
 
@@ -958,6 +959,7 @@ function vAjuda() {
       <p class="hint">Tem uma dúvida, achou um erro ou quer sugerir uma melhoria? Mande uma mensagem.</p>${contatosHtml()}</section>
     <section class="section"><h2>Perguntas frequentes</h2>
       ${q('Como cadastro um pombo?', 'Toque em <b>Cadastrar</b>, digite a anilha (ex.: 1402317/23 BRA) e preencha o que souber. Se a anilha já foi usada por outro pombal no app, o histórico dela aparece na hora.')}
+      ${q('Comprei um pombo que já está no app. Preciso digitar os pais e avós?', 'Não. Ao digitar a anilha em <b>Cadastrar</b>, se outro criador já cadastrou os ancestrais dele, aparece a opção <b>Copiar os ancestrais</b>. Eles viram uma cópia sua, que você pode mudar sem mexer no cadastro do outro criador. As fotos e os dados do outro criador não são copiados.')}
       ${q('O que são os ancestrais?', 'São os pais, avós e outros pombos que você cadastra só para montar o pedigree. Eles ficam guardados, mas não contam no seu plantel. Para vê-los, use o filtro <b>Ancestrais</b> na tela Plantel. Se um ancestral estiver no seu pombal, edite o pombo e mude a situação para "Está no meu pombal".')}
       ${q('Vendi, cedi ou perdi um pombo. O que faço?', 'Edite o pombo e mude a situação (vendido, cedido, perdido ou morreu). Assim a passagem dele pelo seu pombal fica registrada. Use "Tirar do meu plantel" só se cadastrou por engano. Mesmo assim, o histórico dele fica guardado.')}
       ${q('Quem vê o histórico do pombo?', 'O histórico (provas, prêmios, saúde, reprodução, entradas e saídas) é compartilhado com todos os pombais que tiverem a mesma anilha. Cada registro só pode ser alterado ou apagado por quem o cadastrou.')}
@@ -1219,13 +1221,21 @@ async function salvarPombo(form) {
     const regNovo = novo && meuRegistro(novo.id);
     if (regNovo) dados.plantel_id = regNovo.id;
   }
+  const copiar = !dados.plantel_id && $('#f-copiar') && $('#f-copiar').checked;
   const { data, error } = await sb.rpc('salvar_pombo', { d: dados });
   if (error) return falhou(error.message);
+  let copiados = 0, erroCopia = null;
+  if (copiar) {
+    const c = await sb.rpc('copiar_ancestrais', { p_pombo: data.pombo_id });
+    if (c.error) erroCopia = traduzir(c.error.message); else copiados = c.data || 0;
+  }
   await recarregarTudo(data.pombo_id);
   const volta = v('#f-volta');
   if (volta) state.ficha = { id: null };
   location.hash = volta ? '#/' + volta : '#/pombo/' + data.pombo_id;
   if (filhoId) toast('Ancestral cadastrado e ligado no pedigree.');
+  else if (erroCopia) toast('Pombo cadastrado, mas não deu para copiar os ancestrais: ' + erroCopia);
+  else if (copiados) toast('Pombo cadastrado e ancestrais copiados. Confira no pedigree.');
   else toast(dados.plantel_id ? 'Alterações salvas.' : data.ja_existia ? 'Pombo cadastrado. O histórico dele já está disponível.' : 'Pombo cadastrado.');
 }
 
