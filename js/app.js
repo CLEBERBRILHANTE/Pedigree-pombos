@@ -68,10 +68,17 @@ const I = {
   search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>',
   edit: '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg>',
   shield: '<svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>',
+  help: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 4.9.7c0 1.7-2.4 2.2-2.4 3.8"/><circle cx="12" cy="17" r=".6"/></svg>',
+  whats: '<svg viewBox="0 0 24 24"><path d="M4 20l1.2-3.6A8 8 0 1 1 8 19z"/><path d="M9 8.5c0 3.5 3 6.5 6.5 6.5l1-1.6-2-1-1 .9c-1-.4-2-1.4-2.4-2.4l.9-1-1-2z"/></svg>',
+  mail: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6l8.5 7 8.5-7"/></svg>',
   camera: '<svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>'
 };
 
-const credito = () => `<p class="credit">${esc(C.nomeApp)} · App desenvolvido por <b>${esc(C.criador)}</b></p>`;
+const linkWhats = () => C.whatsapp ? `https://wa.me/${encodeURIComponent(C.whatsapp)}?text=${encodeURIComponent('Olá! Preciso de ajuda com o app ' + C.nomeApp + '.')}` : '';
+const contatosHtml = () => `<div class="contatos">
+  ${C.whatsapp ? `<a class="btn btn-primary" href="${linkWhats()}" target="_blank" rel="noopener">${I.whats}WhatsApp ${esc(C.whatsappTexto || '')}</a>` : ''}
+  ${C.emailContato ? `<a class="btn btn-ghost" href="mailto:${esc(C.emailContato)}?subject=${encodeURIComponent('Ajuda com o ' + C.nomeApp)}">${I.mail}${esc(C.emailContato)}</a>` : ''}
+</div>`;
 
 // ---------- Telas de acesso ----------
 function vAuth() {
@@ -114,7 +121,8 @@ function vAuth() {
   return `<div class="wrap login view">
     <div class="brand"><img src="img/icone.svg" alt=""><h1>${esc(C.nomeApp)}</h1><p>Cadastre seu plantel e emita pedigrees com a árvore completa.</p></div>
     ${form}
-    ${credito()}
+    <details class="card ajuda-login"><summary>${I.help}Precisa de ajuda?</summary>
+      <p class="hint">Fale com a gente pelo WhatsApp ou por e-mail.</p>${contatosHtml()}</details>
   </div>`;
 }
 
@@ -150,7 +158,7 @@ function rota() {
   const h = location.hash.replace(/^#\/?/, '');
   const [caminho, busca = ''] = h.split('?');
   const partes = caminho.split('/').filter(Boolean);
-  const nomes = ['plantel', 'novo', 'pombo', 'editar', 'evento', 'pedigree', 'conta', 'admin'];
+  const nomes = ['plantel', 'novo', 'pombo', 'editar', 'evento', 'pedigree', 'conta', 'admin', 'ajuda'];
   const nome = nomes.includes(partes[0]) ? partes[0] : 'plantel';
   return { nome, a: partes[1] || null, b: partes[2] || null, q: new URLSearchParams(busca) };
 }
@@ -158,13 +166,14 @@ function rota() {
 function shell(r, titulo, sub, corpo, { voltar = null, direita = '' } = {}) {
   const ativa = ['pombo', 'editar', 'evento'].includes(r) ? 'plantel' : r;
   const aba = (n, ico, label) => `<a href="#/${n}" ${ativa === n ? 'aria-current="page"' : ''}>${ico}<span>${label}</span></a>`;
+  const ajuda = r === 'ajuda' ? '' : `<a class="icon-btn so-celular" href="#/ajuda" aria-label="Ajuda">${I.help}</a>`;
   return `<header class="topbar wrap">${voltar ? `<a class="icon-btn" href="${voltar}" aria-label="Voltar">${I.back}</a>` : ''}
-    <h1>${esc(titulo)}${sub ? `<span class="sub">${esc(sub)}</span>` : ''}</h1>${direita}</header>
-  <main class="view wrap"><div class="stack">${corpo}${credito()}</div></main>
+    <h1>${esc(titulo)}${sub ? `<span class="sub">${esc(sub)}</span>` : ''}</h1>${ajuda}${direita}</header>
+  <main class="view wrap"><div class="stack">${corpo}</div></main>
   <nav class="tabbar${state.admin ? ' com-admin' : ''}" aria-label="Menu">
     <a class="nav-brand" href="#/plantel"><img src="img/icone.svg" alt=""><span>${esc(C.nomeApp)}</span></a>
     ${aba('plantel', I.list, 'Plantel')}${aba('novo', `<span class="plus">${I.plus}</span>`, 'Cadastrar')}${aba('pedigree', I.tree, 'Pedigree')}${aba('conta', I.user, 'Meu pombal')}${state.admin ? aba('admin', I.shield, 'Admin') : ''}
-    <p class="nav-credit">App desenvolvido por<br><b>${esc(C.criador)}</b></p>
+    <a class="nav-ajuda" href="#/ajuda" ${ativa === 'ajuda' ? 'aria-current="page"' : ''}>${I.help}<span>Ajuda</span></a>
   </nav>`;
 }
 
@@ -178,6 +187,8 @@ function filtrarPlantel() {
   const f = state.filtro;
   return state.dados.plantel.map(r => ({ r, p: pombo(r.pombo_id) })).filter(({ r, p }) => {
     if (!p) return false;
+    // Ancestrais ficam fora da lista do plantel; aparecem no filtro "Ancestrais" ou na busca.
+    if (f === 'todos' && r.situacao === 'referencia' && !q) return false;
     if (f === 'ativo' && r.situacao !== 'ativo') return false;
     if (f === 'M' && (p.sexo !== 'M' || r.situacao !== 'ativo')) return false;
     if (f === 'F' && (p.sexo !== 'F' || r.situacao !== 'ativo')) return false;
@@ -204,7 +215,11 @@ function itemPombo(p, r, href) {
 
 function listaHtml() {
   const l = filtrarPlantel();
-  return l.length ? l.map(({ r, p }) => itemPombo(p, r)).join('') : '<li class="empty">Nenhum pombo encontrado.</li>';
+  if (l.length) return l.map(({ r, p }) => itemPombo(p, r)).join('');
+  const temAncestral = state.dados.plantel.some(r => r.situacao === 'referencia');
+  return state.filtro === 'todos' && !state.q.trim() && temAncestral
+    ? '<li class="empty">Nenhum pombo no plantel ainda. Os ancestrais cadastrados para o pedigree estão no filtro "Ancestrais".</li>'
+    : '<li class="empty">Nenhum pombo encontrado.</li>';
 }
 
 function vPlantel() {
@@ -218,11 +233,13 @@ function vPlantel() {
         <a class="btn btn-primary" href="#/novo">${I.plus}Cadastrar pombo</a></div>`, { direita: novo });
   }
   const ativos = todos.filter(r => r.situacao === 'ativo').map(r => pombo(r.pombo_id)).filter(Boolean);
+  const noPlantel = todos.filter(r => r.situacao !== 'referencia').length;
+  const ancestrais = todos.length - noPlantel;
   const chip = (v, l) => `<button type="button" class="chip" data-filtro="${v}" aria-pressed="${state.filtro === v}">${l}</button>`;
   return shell('plantel', 'Plantel', nomePombal(), `${erroDados()}
-    <div class="stats"><span><b>${ativos.length}</b> no pombal</span><span><b>${ativos.filter(p => p.sexo === 'M').length}</b> machos</span><span><b>${ativos.filter(p => p.sexo === 'F').length}</b> fêmeas</span><span><b>${todos.length}</b> no total</span></div>
+    <div class="stats"><span><b>${ativos.length}</b> no pombal</span><span><b>${ativos.filter(p => p.sexo === 'M').length}</b> machos</span><span><b>${ativos.filter(p => p.sexo === 'F').length}</b> fêmeas</span><span><b>${noPlantel}</b> no plantel</span></div>
     <div class="search">${I.search}<input class="input" id="q" type="search" placeholder="Buscar por anilha, nome, cor ou pais" value="${esc(state.q)}" aria-label="Buscar"></div>
-    <div class="chips">${chip('todos', 'Todos')}${chip('ativo', 'No pombal')}${chip('M', '♂ Machos')}${chip('F', '♀ Fêmeas')}${chip('referencia', 'Ancestrais')}${chip('saiu', 'Saíram')}</div>
+    <div class="chips">${chip('todos', 'Todos')}${chip('ativo', 'No pombal')}${chip('M', '♂ Machos')}${chip('F', '♀ Fêmeas')}${chip('referencia', `Ancestrais${ancestrais ? ` (${ancestrais})` : ''}`)}${chip('saiu', 'Saíram')}</div>
     <ul class="list" id="lista">${listaHtml()}</ul>`, { direita: novo });
 }
 
@@ -921,8 +938,26 @@ function vConta() {
       <div class="field"><label for="p-tel">Telefone / WhatsApp</label><input class="input" id="p-tel" maxlength="40" type="tel" value="${esc(p.telefone)}"></div>
       <button class="btn btn-primary btn-block full" type="submit" ${state.ocupado ? 'disabled' : ''}>Salvar</button>
     </form>
+    <a class="btn btn-ghost btn-block so-celular" href="#/ajuda">${I.help}Ajuda e contato</a>
     <div class="sessao"><p class="hint">Conectado como <b>${esc(email)}</b></p>
     <button class="btn btn-ghost" type="button" data-sair>Sair da conta</button></div>`);
+}
+
+// ----- Ajuda -----
+function vAjuda() {
+  const q = (t, r) => `<details class="faq"><summary>${t}</summary><p>${r}</p></details>`;
+  return shell('ajuda', 'Ajuda', 'Dúvidas e contato', `
+    <section class="card ajuda-contato"><h2>Fale com a gente</h2>
+      <p class="hint">Tem uma dúvida, achou um erro ou quer sugerir uma melhoria? Mande uma mensagem.</p>${contatosHtml()}</section>
+    <section class="section"><h2>Perguntas frequentes</h2>
+      ${q('Como cadastro um pombo?', 'Toque em <b>Cadastrar</b>, digite a anilha (ex.: 1402317/23 BRA) e preencha o que souber. Se a anilha já foi usada por outro pombal no app, o histórico dela aparece na hora.')}
+      ${q('O que são os ancestrais?', 'São os pais, avós e outros pombos que você cadastra só para montar o pedigree. Eles ficam guardados, mas não contam no seu plantel. Para vê-los, use o filtro <b>Ancestrais</b> na tela Plantel. Se um ancestral estiver no seu pombal, edite o pombo e mude a situação para "Está no meu pombal".')}
+      ${q('Vendi, cedi ou perdi um pombo. O que faço?', 'Edite o pombo e mude a situação (vendido, cedido, perdido ou morreu). Assim a passagem dele pelo seu pombal fica registrada. Use "Tirar do meu plantel" só se cadastrou por engano. Mesmo assim, o histórico dele fica guardado.')}
+      ${q('Quem vê o histórico do pombo?', 'O histórico (provas, prêmios, saúde, reprodução, entradas e saídas) é compartilhado com todos os pombais que tiverem a mesma anilha. Cada registro só pode ser alterado ou apagado por quem o cadastrou.')}
+      ${q('Quem vê o nome, a cor, os pais e as fotos do meu pombo?', 'Só você. Se outro pombal cadastrar a mesma anilha, ele tem a cópia dele desses dados, e o que ele mudar não aparece para você.')}
+      ${q('Como emito o pedigree?', 'Toque em <b>Pedigree</b>, escolha o pombo e baixe o PDF. Ele sai com 5 gerações. No cabeçalho vão os dados de <a href="#/conta">Meu pombal</a>.')}
+      ${q('Como coloco as fotos do olho e da cabeça?', 'Abra a ficha do pombo e use a parte de fotos. Dá para tirar a foto na hora ou escolher da galeria.')}
+    </section>`);
 }
 
 // ---------- Render ----------
@@ -935,6 +970,7 @@ function render() {
   const r = rota();
   let html;
   if (r.nome === 'conta') html = vConta();
+  else if (r.nome === 'ajuda') html = vAjuda();
   else if (r.nome === 'admin') html = vAdmin(r);
   else if (r.nome === 'pedigree') html = vPedigree(r.a);
   else if (r.nome === 'pombo') html = vFicha(r.a);
