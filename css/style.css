@@ -313,3 +313,8 @@ main.view > .stack > [data-adm-atualizar] { justify-self: start; }
 
 /* Irmãos na ficha */
 .subtit { font-size: 14px; font-weight: 600; color: var(--fg); margin: 6px 0 0; }
+
+/* Copiar ancestrais (cadastro de anilha que já existe) */
+.msg.info p { margin: 0; }
+.check.copiar { align-items: flex-start; margin-top: 10px; font-size: 13.5px; line-height: 1.45; cursor: pointer; }
+.check.copiar input { flex: none; margin-top: 2px; }

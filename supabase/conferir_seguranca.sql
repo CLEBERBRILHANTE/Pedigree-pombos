@@ -11,7 +11,8 @@ with funcoes as (
 ),
 proibidas as (
   select unnest(array['tornar_admin', 'tirar_admin', 'configurar_aviso_email', 'enviar_aviso_email',
-                      'testar_aviso_email', 'pombo_da_anilha', 'apagar_se_orfao', 'garantir_meus_dados']) as nome
+                      'testar_aviso_email', 'pombo_da_anilha', 'apagar_se_orfao', 'garantir_meus_dados',
+                      'fonte_dos_ancestrais']) as nome
 )
 select * from (
 select 'função ' || f.nome as item,
