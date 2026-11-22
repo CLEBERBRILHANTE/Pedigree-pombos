@@ -348,8 +348,8 @@ begin
   return jsonb_build_object('plantel_id', v_pl_id, 'pombo_id', v_pombo, 'ja_existia', v_existia, 'ignorados', '[]'::jsonb);
 end $$;
 
--- Tira o pombo do meu plantel. Entradas e saídas automáticas saem junto;
--- os outros registros que eu fiz só saem se eu pedir.
+-- Tira o pombo do meu plantel. O histórico (registros, entradas e saídas) fica guardado
+-- (passo 7); o segundo valor é ignorado e existe só para o app antigo.
 -- Devolve as fotos que o app deve apagar (só da pasta do próprio usuário).
 drop function if exists public.remover_do_plantel(uuid, boolean);
 create function public.remover_do_plantel(p_plantel uuid, p_apagar_registros boolean default false)
@@ -360,9 +360,6 @@ declare
 begin
   select * into v_pl from public.plantel where id = p_plantel and user_id = auth.uid();
   if not found then raise exception 'Este pombo não está no seu plantel.'; end if;
-  delete from public.eventos
-    where pombo_id = v_pl.pombo_id and autor_id = auth.uid()
-      and (tipo in ('entrada', 'saida') or coalesce(p_apagar_registros, false));
   delete from public.plantel where id = v_pl.id;
   -- Se ele não é pai/mãe de nenhum pombo meu, meus dados dele saem também.
   if not exists (select 1 from public.dados_pombo where user_id = auth.uid() and (pai_id = v_pl.pombo_id or mae_id = v_pl.pombo_id)) then
