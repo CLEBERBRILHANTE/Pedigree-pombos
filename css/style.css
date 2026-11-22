@@ -318,3 +318,47 @@ main.view > .stack > [data-adm-atualizar] { justify-self: start; }
 .msg.info p { margin: 0; }
 .check.copiar { align-items: flex-start; margin-top: 10px; font-size: 13.5px; line-height: 1.45; cursor: pointer; }
 .check.copiar input { flex: none; margin-top: 2px; }
+
+/* ---------- Vacinas ---------- */
+.tabbar .nav-extra { display: none; }
+.stats-link { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; color: var(--accent); text-decoration: none; }
+.stats-link svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.avisos-vac { display: grid; gap: 8px; }
+.aviso-vac { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; background: var(--accent-soft); border-radius: 12px; padding: 10px 12px; }
+.aviso-vac.vencida { background: var(--erro-soft); }
+.aviso-vac > svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.aviso-vac p { margin: 0; font-size: 13.5px; line-height: 1.4; }
+.aviso-vac .btn { padding: 8px 12px; font-size: 13.5px; }
+.vac-lista { gap: 12px; }
+.vac-card { gap: 8px; }
+.vac-tit { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.vac-tit h2 { font-size: 18px; }
+.vac-card .hint, .vac-status { margin: 0; }
+.vac-status { font-size: 14px; }
+.vac-status.pendente { color: var(--erro); }
+.vac-status.ok { color: var(--ok); }
+.vac-acoes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+.vac-intervalo { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.vac-form { display: grid; gap: 16px; padding-bottom: 72px; }
+.vac-data { max-width: 260px; }
+.vac-cab { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.vac-cab span { font-size: 13.5px; }
+.vac-item { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-left: 5px solid var(--line); border-radius: 13px; padding: 10px 12px; cursor: pointer; }
+.vac-item.m { border-left-color: var(--cock-edge); } .vac-item.f { border-left-color: var(--hen-edge); }
+.vac-item input { width: 22px; height: 22px; }
+.vac-item .body { display: grid; gap: 2px; min-width: 0; }
+.vac-item .ring { font-family: var(--f-mono); font-weight: 600; }
+.vac-item .name { font-size: 14px; }
+.vac-item .meta { font-size: 12.5px; color: var(--muted); }
+.vac-item .meta.vac-vencida { color: var(--erro); font-weight: 600; }
+.vac-item:has(input:checked) { background: var(--accent-soft); }
+.vac-emdia summary { cursor: pointer; font-weight: 600; color: var(--muted); padding: 6px 0; }
+.vac-emdia .list { margin-top: 8px; }
+.vac-rodape { position: sticky; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); background: linear-gradient(transparent, var(--bg) 30%); padding-top: 14px; }
+@media (min-width: 600px) {
+  .tabbar .nav-extra { display: flex; }
+  .vac-lista { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+  .vac-form { max-width: 760px; }
+  .vac-rodape { bottom: 0; padding-bottom: 16px; }
+  .vac-rodape .btn { width: auto; padding-inline: 32px; }
+}

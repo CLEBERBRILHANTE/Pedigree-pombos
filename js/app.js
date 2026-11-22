@@ -23,6 +23,7 @@ const state = {
   fotoUrls: new Map(),    // caminho da foto -> { url, ate }
   fotoEnviando: null,     // 'olho' | 'cabeca' enquanto envia
   admin: false,           // a conta é de administrador (conferido no banco)
+  vac: { carregado: false, faltaSQL: false, erro: null, vacinas: [], doses: new Map() }, // vacinas e última dose (vacina|pombo -> data)
   adm: { carregado: false, erro: null, resumo: null, usuarios: [], aba: 'usuarios', busca: '', pombos: null, plantel: {} }
 };
 
@@ -71,6 +72,7 @@ const I = {
   help: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 4.9.7c0 1.7-2.4 2.2-2.4 3.8"/><circle cx="12" cy="17" r=".6"/></svg>',
   whats: '<svg viewBox="0 0 24 24"><path d="M4 20l1.2-3.6A8 8 0 1 1 8 19z"/><path d="M9 8.5c0 3.5 3 6.5 6.5 6.5l1-1.6-2-1-1 .9c-1-.4-2-1.4-2.4-2.4l.9-1-1-2z"/></svg>',
   mail: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6l8.5 7 8.5-7"/></svg>',
+  vacina: '<svg viewBox="0 0 24 24"><path d="M18 2l4 4M16 4l4 4M19 5l-9.5 9.5M14 6l4 4M6.5 13.5l4 4M9 11l-6 6v4h4l6-6"/><path d="M10.5 9.5l2 2M8 12l2 2"/></svg>',
   camera: '<svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>'
 };
 
@@ -158,7 +160,7 @@ function rota() {
   const h = location.hash.replace(/^#\/?/, '');
   const [caminho, busca = ''] = h.split('?');
   const partes = caminho.split('/').filter(Boolean);
-  const nomes = ['plantel', 'novo', 'pombo', 'editar', 'evento', 'pedigree', 'conta', 'admin', 'ajuda'];
+  const nomes = ['plantel', 'novo', 'pombo', 'editar', 'evento', 'pedigree', 'conta', 'admin', 'ajuda', 'vacinas'];
   const nome = nomes.includes(partes[0]) ? partes[0] : 'plantel';
   return { nome, a: partes[1] || null, b: partes[2] || null, q: new URLSearchParams(busca) };
 }
@@ -173,6 +175,7 @@ function shell(r, titulo, sub, corpo, { voltar = null, direita = '' } = {}) {
   <nav class="tabbar${state.admin ? ' com-admin' : ''}" aria-label="Menu">
     <a class="nav-brand" href="#/plantel"><img src="img/icone.svg" alt=""><span>${esc(C.nomeApp)}</span></a>
     ${aba('plantel', I.list, 'Plantel')}${aba('novo', `<span class="plus">${I.plus}</span>`, 'Cadastrar')}${aba('pedigree', I.tree, 'Pedigree')}${aba('conta', I.user, 'Meu pombal')}${state.admin ? aba('admin', I.shield, 'Admin') : ''}
+    <a class="nav-extra" href="#/vacinas" ${ativa === 'vacinas' ? 'aria-current="page"' : ''}>${I.vacina}<span>Vacinas</span></a>
     <a class="nav-ajuda" href="#/ajuda" ${ativa === 'ajuda' ? 'aria-current="page"' : ''}>${I.help}<span>Ajuda</span></a>
   </nav>`;
 }
@@ -237,7 +240,8 @@ function vPlantel() {
   const ancestrais = todos.length - noPlantel;
   const chip = (v, l) => `<button type="button" class="chip" data-filtro="${v}" aria-pressed="${state.filtro === v}">${l}</button>`;
   return shell('plantel', 'Plantel', nomePombal(), `${erroDados()}
-    <div class="stats"><span><b>${ativos.length}</b> no pombal</span><span><b>${ativos.filter(p => p.sexo === 'M').length}</b> machos</span><span><b>${ativos.filter(p => p.sexo === 'F').length}</b> fêmeas</span><span><b>${noPlantel}</b> no plantel</span></div>
+    <div class="stats"><a class="stats-link so-celular" href="#/vacinas">${I.vacina}Vacinas</a><span><b>${ativos.length}</b> no pombal</span><span><b>${ativos.filter(p => p.sexo === 'M').length}</b> machos</span><span><b>${ativos.filter(p => p.sexo === 'F').length}</b> fêmeas</span><span><b>${noPlantel}</b> no plantel</span></div>
+    ${avisoVacinasHtml()}
     <div class="search">${I.search}<input class="input" id="q" type="search" placeholder="Buscar por anilha, nome, cor ou pais" value="${esc(state.q)}" aria-label="Buscar"></div>
     <div class="chips">${chip('todos', 'Todos')}${chip('ativo', 'No pombal')}${chip('M', '♂ Machos')}${chip('F', '♀ Fêmeas')}${chip('referencia', `Ancestrais${ancestrais ? ` (${ancestrais})` : ''}`)}${chip('saiu', 'Saíram')}</div>
     <ul class="list" id="lista">${listaHtml()}</ul>`, { direita: novo });
@@ -951,6 +955,200 @@ function vConta() {
     <button class="btn btn-ghost" type="button" data-sair>Sair da conta</button></div>`);
 }
 
+// ----- Vacinas -----
+const DIAS_AVISO = 7; // avisa a revacinação 7 dias antes
+const hojeISO = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const somaDias = (iso, n) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const SUGESTOES_VACINA = ['Paramixovírus', 'Varíola (bouba)', 'Salmonelose (paratifo)', 'Herpesvírus', 'Adenovírus', 'Rotavírus', 'Influenza'];
+
+function intervaloTxt(dias) {
+  if (!dias) return 'Dose única (sem revacinação)';
+  if (dias % 365 === 0) return `Revacinar a cada ${dias / 365 === 1 ? 'ano' : dias / 365 + ' anos'}`;
+  if (dias % 30 === 0) return `Revacinar a cada ${dias / 30 === 1 ? 'mês' : dias / 30 + ' meses'}`;
+  return `Revacinar a cada ${dias} ${dias === 1 ? 'dia' : 'dias'}`;
+}
+
+// Situação de cada pombo do pombal para uma vacina.
+// estado: nunca | vencida | chegando | emdia | unica (dose única já tomada)
+function situacaoVacina(v) {
+  const hoje = hojeISO(), limite = somaDias(hoje, DIAS_AVISO);
+  return state.dados.plantel.filter(r => r.situacao === 'ativo').map(r => {
+    const p = pombo(r.pombo_id); if (!p) return null;
+    const ultima = state.vac.doses.get(v.id + '|' + p.id) || null;
+    const proxima = ultima && v.intervalo_dias ? somaDias(ultima, v.intervalo_dias) : null;
+    const estado = !ultima ? 'nunca' : !proxima ? 'unica' : proxima <= hoje ? 'vencida' : proxima <= limite ? 'chegando' : 'emdia';
+    return { p, ultima, proxima, estado };
+  }).filter(Boolean).sort((x, y) => (y.p.ano - x.p.ano) || x.p.numero.localeCompare(y.p.numero, 'pt-BR', { numeric: true }));
+}
+const precisa = x => ['nunca', 'vencida', 'chegando'].includes(x.estado);
+
+// Aviso na tela Plantel: revacinação vencida ou chegando (só de quem já tomou a vacina).
+function avisoVacinasHtml() {
+  if (!state.vac.carregado) return '';
+  const itens = state.vac.vacinas.filter(v => v.intervalo_dias).map(v => {
+    const l = situacaoVacina(v).filter(x => x.estado === 'vencida' || x.estado === 'chegando');
+    if (!l.length) return '';
+    const venceu = l.some(x => x.estado === 'vencida');
+    const data = l.map(x => x.proxima).sort()[0];
+    return `<div class="aviso-vac ${venceu ? 'vencida' : ''}">${I.vacina}<p><b>${esc(v.nome)}:</b> ${l.length} ${l.length === 1 ? 'pombo precisa' : 'pombos precisam'} de revacinação ${venceu ? `(venceu em ${dataBR(data)})` : `até ${dataBR(data)}`}.</p>
+      <a class="btn btn-primary" href="#/vacinas/vacinar/${esc(v.id)}">Vacinar</a></div>`;
+  }).join('');
+  return itens ? `<div class="avisos-vac">${itens}</div>` : '';
+}
+
+function vVacinas(r) {
+  const vc = state.vac;
+  const voltar = '#/vacinas';
+  if (!state.dados.carregado || !vc.carregado) return shell('vacinas', 'Vacinas', '', erroDados() || (vc.erro ? `<p class="msg erro">${esc(vc.erro)}</p>` : carregandoHtml));
+  if (vc.faltaSQL) return shell('vacinas', 'Vacinas', '', '<p class="msg erro">O banco ainda não tem as vacinas: falta rodar o arquivo 09_vacinas.sql no Supabase.</p>');
+  if (r.a === 'nova' || r.a === 'editar') {
+    const v = r.a === 'editar' ? vc.vacinas.find(x => x.id === r.b) : null;
+    if (r.a === 'editar' && !v) return shell('vacinas', 'Vacina', '', '<p class="msg erro">Vacina não encontrada.</p>', { voltar });
+    return vFormVacina(v);
+  }
+  if (r.a === 'vacinar') {
+    const v = vc.vacinas.find(x => x.id === r.b);
+    if (!v) return shell('vacinas', 'Vacinação', '', '<p class="msg erro">Vacina não encontrada.</p>', { voltar });
+    return vVacinar(v);
+  }
+  const novo = `<a class="icon-btn" href="#/vacinas/nova" aria-label="Cadastrar vacina">${I.plus}</a>`;
+  if (!vc.vacinas.length) {
+    return shell('vacinas', 'Vacinas', 'Vacinação do plantel', `<div class="vazio">${I.vacina}<h2>Nenhuma vacina cadastrada</h2>
+      <p>Cadastre as vacinas que você usa, com a marca e de quanto em quanto tempo revacinar. Depois é só marcar os pombos vacinados de uma vez.</p>
+      <a class="btn btn-primary" href="#/vacinas/nova">${I.plus}Cadastrar vacina</a></div>`, { direita: novo });
+  }
+  const cards = vc.vacinas.map(v => {
+    const l = situacaoVacina(v);
+    const falta = l.filter(precisa);
+    const prox = l.filter(x => x.estado === 'emdia').map(x => x.proxima).sort()[0];
+    const status = !l.length ? 'Nenhum pombo no pombal.'
+      : falta.length ? `<b>${falta.length}</b> de ${l.length} ${falta.length === 1 ? 'pombo precisa' : 'pombos precisam'} de vacina`
+      : prox ? `Todos em dia. Próxima dose a partir de ${dataBR(prox)}.` : 'Todos vacinados.';
+    return `<li class="card vac-card">
+      <div class="vac-tit"><h2>${esc(v.nome)}</h2>${v.marca ? `<span class="tag">${esc(v.marca)}</span>` : ''}</div>
+      <p class="hint">${intervaloTxt(v.intervalo_dias)}</p>
+      <p class="vac-status ${falta.length ? 'pendente' : 'ok'}">${status}</p>
+      <div class="vac-acoes"><a class="btn btn-primary" href="#/vacinas/vacinar/${esc(v.id)}">${I.vacina}Iniciar vacinação</a><a class="btn btn-ghost" href="#/vacinas/editar/${esc(v.id)}">${I.edit}Editar</a></div>
+    </li>`;
+  }).join('');
+  return shell('vacinas', 'Vacinas', 'Vacinação do plantel', `
+    <p class="hint">Só você vê suas vacinas. Cada vacinação vira um registro de Saúde no histórico do pombo. O app avisa na tela Plantel quando a revacinação estiver a ${DIAS_AVISO} dias ou menos.</p>
+    <ul class="list vac-lista">${cards}</ul>
+    <a class="btn btn-ghost btn-block" href="#/vacinas/nova">${I.plus}Cadastrar outra vacina</a>`, { direita: novo });
+}
+
+function vFormVacina(v) {
+  let qtd = '', un = 'meses';
+  if (v && v.intervalo_dias) {
+    const d = v.intervalo_dias;
+    if (d % 365 === 0) { qtd = d / 365; un = 'anos'; } else if (d % 30 === 0) { qtd = d / 30; un = 'meses'; } else { qtd = d; un = 'dias'; }
+  }
+  const unica = v && !v.intervalo_dias;
+  const corpo = `<form id="f-vacina" class="form-grid" novalidate>
+    ${v ? `<input type="hidden" id="v-id" value="${esc(v.id)}">` : ''}
+    <p class="msg erro full" id="v-erro" role="alert" hidden></p>
+    <div class="field"><label for="v-nome">Vacina (contra o quê)</label><input class="input" id="v-nome" maxlength="80" list="v-sugestoes" required placeholder="Ex.: Paramixovírus" value="${esc(v && v.nome)}">
+      <datalist id="v-sugestoes">${SUGESTOES_VACINA.map(x => `<option value="${esc(x)}">`).join('')}</datalist></div>
+    <div class="field"><label for="v-marca">Marca (opcional)</label><input class="input" id="v-marca" maxlength="80" placeholder="Ex.: Colombovac PMV" value="${esc(v && v.marca)}"></div>
+    <div class="field full"><label for="v-qtd">Revacinar a cada</label>
+      <div class="vac-intervalo"><input class="input" id="v-qtd" type="number" min="1" max="3650" inputmode="numeric" placeholder="Ex.: 12" value="${esc(qtd)}" ${unica ? 'disabled' : ''}>
+        <select class="input" id="v-un" ${unica ? 'disabled' : ''}>${[['dias', 'dias'], ['meses', 'meses'], ['anos', 'anos']].map(([k, l]) => `<option value="${k}" ${k === un ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <label class="check"><input type="checkbox" id="v-unica" ${unica ? 'checked' : ''}> Dose única (não precisa revacinar)</label></div>
+    <div class="field full"><label for="v-obs">Observações (opcional)</label><textarea class="input" id="v-obs" maxlength="500" placeholder="Ex.: aplicar no pescoço; reforço antes da temporada">${esc(v && v.observacoes)}</textarea></div>
+    <button class="btn btn-primary btn-block full" type="submit">${v ? 'Salvar alterações' : 'Cadastrar vacina'}</button>
+  </form>
+  ${v ? `<details class="remover"><summary>Apagar esta vacina</summary>
+    <p class="hint">As vacinações que você já registrou continuam no histórico dos pombos.</p>
+    <button class="btn btn-perigo" type="button" data-vac-apagar="${esc(v.id)}">Apagar vacina</button></details>` : ''}`;
+  return shell('vacinas', v ? 'Editar vacina' : 'Cadastrar vacina', v ? v.nome : 'Vacinas do plantel', corpo, { voltar: '#/vacinas' });
+}
+
+function itemVacinar(x, marcado) {
+  const p = x.p;
+  const info = { nunca: 'Ainda não tomou esta vacina', vencida: `Venceu em ${dataBR(x.proxima)}`, chegando: `Vence em ${dataBR(x.proxima)}`,
+    emdia: `Em dia até ${dataBR(x.proxima)}`, unica: `Vacinado em ${dataBR(x.ultima)}` }[x.estado];
+  return `<li><label class="vac-item ${sexoCls(p.sexo)}">
+    <input type="checkbox" name="vac-pombo" value="${esc(p.id)}" ${marcado ? 'checked' : ''}>
+    <span class="body"><span class="ring">${esc(anilha(p))}</span><span class="name">${esc(p.nome || 'Sem nome')}</span>
+      <span class="meta vac-${x.estado}">${info}${x.ultima && x.estado !== 'unica' ? ` · última dose ${dataBR(x.ultima)}` : ''}</span></span>
+  </label></li>`;
+}
+
+function vVacinar(v) {
+  const l = situacaoVacina(v);
+  const falta = l.filter(precisa), ok = l.filter(x => !precisa(x));
+  const corpo = !l.length ? '<p class="hint">Nenhum pombo no pombal. Só entram na vacinação os pombos com a situação "Está no meu pombal".</p>' : `
+  <form id="f-vacinar" class="vac-form">
+    <input type="hidden" id="vc-vacina" value="${esc(v.id)}">
+    <p class="msg erro" id="vc-erro" role="alert" hidden></p>
+    <div class="field vac-data"><label for="vc-data">Data da vacinação</label><input class="input" id="vc-data" type="date" value="${hojeISO()}" max="${hojeISO()}"></div>
+    <section class="section"><div class="vac-cab"><h2>A vacinar (${falta.length})</h2>
+      ${falta.length ? '<span><button type="button" class="link" data-vac-marcar="1">Marcar todos</button> · <button type="button" class="link" data-vac-marcar="0">Desmarcar</button></span>' : ''}</div>
+      ${falta.length ? `<ul class="list">${falta.map(x => itemVacinar(x, true)).join('')}</ul>` : '<p class="hint">Todos os pombos estão em dia com esta vacina.</p>'}
+    </section>
+    ${ok.length ? `<details class="vac-emdia"><summary>Em dia (${ok.length}). Toque para ver ou vacinar mesmo assim</summary>
+      <ul class="list">${ok.map(x => itemVacinar(x, false)).join('')}</ul></details>` : ''}
+    <div class="vac-rodape"><button class="btn btn-primary btn-block" type="submit" id="vc-ok">Confirmar vacinação</button></div>
+  </form>`;
+  return shell('vacinas', v.nome, `${v.marca ? v.marca + ' · ' : ''}${intervaloTxt(v.intervalo_dias)}`, corpo, { voltar: '#/vacinas' });
+}
+
+function contarVacinar() {
+  const b = $('#vc-ok'); if (!b) return;
+  const n = document.querySelectorAll('input[name="vac-pombo"]:checked').length;
+  b.textContent = n ? `Confirmar vacinação de ${n} ${n === 1 ? 'pombo' : 'pombos'}` : 'Marque os pombos vacinados';
+  b.disabled = !n;
+}
+
+async function carregarVacinas() {
+  const [va, vc] = await Promise.all([
+    sb.from('vacinas').select('*').order('nome'),
+    sb.rpc('minhas_vacinacoes')
+  ]);
+  const err = va.error || vc.error;
+  if (err) {
+    state.vac = { carregado: true, faltaSQL: faltaSQL(err.message), erro: faltaSQL(err.message) ? null : traduzir(err.message), vacinas: [], doses: new Map() };
+    return;
+  }
+  state.vac = { carregado: true, faltaSQL: false, erro: null, vacinas: va.data || [],
+    doses: new Map((vc.data || []).map(x => [x.vacina_id + '|' + x.pombo_id, x.ultima])) };
+}
+
+async function salvarVacina(form) {
+  const v = sel => { const el = $(sel); return el ? el.value.trim() : ''; };
+  const nome = v('#v-nome');
+  if (!nome) return mostrarErro('#v-erro', 'Escreva o nome da vacina.');
+  let intervalo = null;
+  if (!$('#v-unica').checked) {
+    const q = Number(v('#v-qtd'));
+    if (!q || q < 1) return mostrarErro('#v-erro', 'Diga de quanto em quanto tempo revacinar, ou marque "Dose única".');
+    intervalo = Math.round(q * ({ dias: 1, meses: 30, anos: 365 }[v('#v-un')] || 1));
+    if (intervalo > 3650) return mostrarErro('#v-erro', 'O intervalo pode ser de no máximo 10 anos.');
+  }
+  const reg = { nome, marca: v('#v-marca') || null, intervalo_dias: intervalo, observacoes: v('#v-obs') || null };
+  const id = v('#v-id');
+  const btn = form.querySelector('[type=submit]'); btn.disabled = true;
+  const { error } = id ? await sb.from('vacinas').update(reg).eq('id', id) : await sb.from('vacinas').insert(reg);
+  if (error) { btn.disabled = false; return mostrarErro('#v-erro', traduzir(error.message)); }
+  await carregarVacinas();
+  location.hash = '#/vacinas';
+  toast(id ? 'Vacina alterada.' : 'Vacina cadastrada.');
+}
+
+async function confirmarVacinacao(form) {
+  const ids = [...document.querySelectorAll('input[name="vac-pombo"]:checked')].map(c => c.value);
+  if (!ids.length) return mostrarErro('#vc-erro', 'Marque pelo menos um pombo.');
+  const data = $('#vc-data').value || hojeISO();
+  if (data > hojeISO()) return mostrarErro('#vc-erro', 'A data não pode ser no futuro.');
+  const btn = $('#vc-ok'); btn.disabled = true; btn.textContent = 'Registrando…';
+  const { data: n, error } = await sb.rpc('registrar_vacinacao', { p_vacina: $('#vc-vacina').value, p_pombos: ids, p_data: data });
+  if (error) { contarVacinar(); return mostrarErro('#vc-erro', traduzir(error.message)); }
+  await carregarVacinas();
+  state.ficha = { id: null };
+  location.hash = '#/vacinas';
+  toast(n ? `${n} ${n === 1 ? 'pombo vacinado' : 'pombos vacinados'}. Registrado no histórico de cada um.` : 'Esses pombos já tinham esta vacina registrada nessa data.');
+}
+
 // ----- Ajuda -----
 function vAjuda() {
   const q = (t, r) => `<details class="faq"><summary>${t}</summary><p>${r}</p></details>`;
@@ -960,6 +1158,7 @@ function vAjuda() {
     <section class="section"><h2>Perguntas frequentes</h2>
       ${q('Como cadastro um pombo?', 'Toque em <b>Cadastrar</b>, digite a anilha (ex.: 1402317/23 BRA) e preencha o que souber. Se a anilha já foi usada por outro pombal no app, o histórico dela aparece na hora.')}
       ${q('Comprei um pombo que já está no app. Preciso digitar os pais e avós?', 'Não. Ao digitar a anilha em <b>Cadastrar</b>, se outro criador já cadastrou os ancestrais dele, aparece a opção <b>Copiar os ancestrais</b>. Eles viram uma cópia sua, que você pode mudar sem mexer no cadastro do outro criador. As fotos e os dados do outro criador não são copiados.')}
+      ${q('Como funciona a vacinação?', 'Em <b>Vacinas</b>, cadastre cada vacina com a marca e de quanto em quanto tempo revacinar. Toque em <b>Iniciar vacinação</b>: aparece a lista dos pombos que precisam da vacina, já marcados. Confirme e cada um ganha um registro de Saúde no histórico. Eles saem da lista até a próxima dose, e o app avisa na tela Plantel quando a revacinação estiver chegando.')}
       ${q('O que são os ancestrais?', 'São os pais, avós e outros pombos que você cadastra só para montar o pedigree. Eles ficam guardados, mas não contam no seu plantel. Para vê-los, use o filtro <b>Ancestrais</b> na tela Plantel. Se um ancestral estiver no seu pombal, edite o pombo e mude a situação para "Está no meu pombal".')}
       ${q('Vendi, cedi ou perdi um pombo. O que faço?', 'Edite o pombo e mude a situação (vendido, cedido, perdido ou morreu). Assim a passagem dele pelo seu pombal fica registrada. Use "Tirar do meu plantel" só se cadastrou por engano. Mesmo assim, o histórico dele fica guardado.')}
       ${q('Quem vê o histórico do pombo?', 'O histórico (provas, prêmios, saúde, reprodução, entradas e saídas) é compartilhado com todos os pombais que tiverem a mesma anilha. Cada registro só pode ser alterado ou apagado por quem o cadastrou.')}
@@ -980,6 +1179,7 @@ function render() {
   let html;
   if (r.nome === 'conta') html = vConta();
   else if (r.nome === 'ajuda') html = vAjuda();
+  else if (r.nome === 'vacinas') html = vVacinas(r);
   else if (r.nome === 'admin') html = vAdmin(r);
   else if (r.nome === 'pedigree') html = vPedigree(r.a);
   else if (r.nome === 'pombo') html = vFicha(r.a);
@@ -992,6 +1192,7 @@ function render() {
   else html = vPlantel();
   app.innerHTML = html;
   ajustarCamposSituacao();
+  contarVacinar();
   ajustarCamposTipo();
 }
 
@@ -1075,6 +1276,7 @@ async function abrirRota() {
   const r = rota();
   if (r.nome === 'admin') { await carregarAdmin(r); render(); return; }
   if (!state.dados.carregado && !state.dados.erro) { await carregarPlantel(); }
+  if (!state.vac.carregado && ['plantel', 'vacinas'].includes(r.nome)) await carregarVacinas();
   let pid = null;
   if (r.nome === 'pombo' || r.nome === 'evento') pid = r.a;
   if (r.nome === 'editar') { const reg = state.dados.plantel.find(x => x.id === r.a); pid = reg && reg.pombo_id; }
@@ -1089,10 +1291,21 @@ async function recarregarTudo(pid) {
 
 // ---------- Eventos ----------
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-adm-aba],[data-adm-atualizar],[data-foto-remover],[data-pdf],[data-auth],[data-sair],[data-filtro],[data-hist],[data-sexo],[data-remover],[data-apagar-evento]');
+  const t = e.target.closest('[data-vac-apagar],[data-vac-marcar],[data-adm-aba],[data-adm-atualizar],[data-foto-remover],[data-pdf],[data-auth],[data-sair],[data-filtro],[data-hist],[data-sexo],[data-remover],[data-apagar-evento]');
   if (!t) return;
   const d = t.dataset;
   if (d.fotoRemover) { removerFoto(t); return; }
+  if (d.vacMarcar) { document.querySelectorAll('.vac-form > .section input[name="vac-pombo"]').forEach(c => { c.checked = d.vacMarcar === '1'; }); contarVacinar(); return; }
+  if (d.vacApagar) {
+    if (!confirm('Apagar esta vacina? As vacinações já registradas continuam no histórico dos pombos.')) return;
+    t.disabled = true;
+    const { error } = await sb.from('vacinas').delete().eq('id', d.vacApagar);
+    if (error) { t.disabled = false; toast(traduzir(error.message)); return; }
+    await carregarVacinas();
+    location.hash = '#/vacinas';
+    toast('Vacina apagada.');
+    return;
+  }
   if (d.admAba) { state.adm.aba = d.admAba; state.adm.busca = ''; render(); if (d.admAba === 'pombos' && !state.adm.pombos) { await buscarPombosAdmin(); render(); } return; }
   if (t.hasAttribute('data-adm-atualizar')) { state.adm = Object.assign(state.adm, { carregado: false, pombos: null, plantel: {} }); render(); await abrirRota(); toast('Números atualizados.'); return; }
   if (d.pdf) {
@@ -1156,6 +1369,8 @@ document.addEventListener('change', e => {
   if (e.target.matches('input[data-foto]')) enviarFoto(e.target);
   if (e.target.id === 'f-sit') ajustarCamposSituacao();
   if (e.target.id === 'e-tipo') ajustarCamposTipo();
+  if (e.target.name === 'vac-pombo') contarVacinar();
+  if (e.target.id === 'v-unica') { $('#v-qtd').disabled = $('#v-un').disabled = e.target.checked; }
 });
 
 async function ocupar(fn) {
@@ -1271,6 +1486,8 @@ document.addEventListener('submit', e => {
 
   if (id === 'f-pombo') return salvarPombo(e.target);
   if (id === 'f-evento') return salvarEvento(e.target);
+  if (id === 'f-vacina') return salvarVacina(e.target);
+  if (id === 'f-vacinar') return confirmarVacinacao(e.target);
   if (id === 'f-auth') {
     const email = v('#a-email'), senha = $('#a-senha').value;
     if (state.auth === 'criar') {
@@ -1344,6 +1561,7 @@ sb.auth.onAuthStateChange((event, session) => {
     if (mudouUsuario) {
       state.dados = { carregado: false, erro: null, plantel: [], pombos: new Map() };
       state.ficha = { id: null };
+      state.vac = { carregado: false, faltaSQL: false, erro: null, vacinas: [], doses: new Map() };
       state.adm = { carregado: false, erro: null, resumo: null, usuarios: [], aba: 'usuarios', busca: '', pombos: null, plantel: {} };
       await carregarPerfil();
       if (session) { render(); await abrirRota(); return; }
