@@ -8,9 +8,10 @@ App desenvolvido por **Cleber Felipe Brilhante**.
 
 - Site estático (HTML, CSS e JavaScript, sem etapa de build). Pode ser publicado no Vercel, Netlify ou GitHub Pages.
 - Login e banco de dados no [Supabase](https://supabase.com). Cada usuário só acessa o próprio plantel (Row Level Security).
-- Histórico compartilhado: a anilha (país + ano + número) identifica o pombo no app todo. Quem cadastra uma anilha que já existe passa a ver o histórico completo do pombo (nascimento, pombais por onde passou, provas e resultados, saúde, reprodução, observações).
+- Dados de cada usuário: nome, sexo, cor, nascimento, pai, mãe e fotos de cada pombo são só de quem os cadastrou (tabela `dados_pombo`). Se outra pessoa cadastrar a mesma anilha, o que ela mudar aparece só para ela.
+- Histórico compartilhado: a anilha (país + ano + número) identifica o pombo no app todo. Quem cadastra uma anilha que já existe passa a ver o histórico do pombo (pombais por onde passou, provas e resultados, saúde, reprodução, observações). Cada registro só pode ser alterado ou apagado por quem o fez, e sai sempre com o nome do pombal do autor.
 - Pedigree em PDF: tela Pedigree (ou botão na ficha do pombo). Usa os pombos e pais já cadastrados; o texto de cada quadro vem de "Títulos e observações". Não precisa rodar SQL novo.
-- Fotos do olho e da cabeça: na ficha do pombo. O app diminui a foto (máx. 1280 px, JPEG) antes de enviar. Quem vê o pombo vê as fotos; quem pode mudar os dados do pombo pode trocá-las. Podem sair no pedigree em PDF.
+- Fotos do olho e da cabeça: na ficha do pombo. O app diminui a foto (máx. 1280 px, JPEG) antes de enviar. Cada usuário vê e troca só as próprias fotos (pasta `fotos/<usuário>/<pombo>/`). Podem sair no pedigree em PDF.
 - Pedigree: tocar num quadro vazio abre o cadastro daquele ancestral já ligado ao filho certo; tocar num ancestral abre a edição dele e volta ao pedigree.
 - Administrador: menu Admin com totais, lista de usuários/pombais (com o plantel de cada um) e lista de pombos. Para tornar uma conta administradora, rode no SQL Editor `select public.tornar_admin('email-da-conta');`.
 - Configuração pública (URL e chave publicável do Supabase) em `js/config.js`.
@@ -25,12 +26,14 @@ App desenvolvido por **Cleber Felipe Brilhante**.
 | `js/app.js` | Telas e lógica (login, conta, plantel, ficha, histórico) |
 | `js/config.js` | Nome do app, criador e dados do Supabase |
 | `vendor/supabase.js` | Biblioteca oficial do Supabase (supabase-js 2.119.2) |
-| `vendor/jspdf.umd.min.js` | Gerador de PDF no navegador (jsPDF 3.0.3), carregado só na hora de baixar o pedigree |
+| `vendor/jspdf.umd.min.js` | Gerador de PDF no navegador (jsPDF 4.2.1), carregado só na hora de baixar o pedigree |
 | `supabase/01_base_login.sql` | Tabela `perfis` e regras de segurança |
 | `supabase/02_plantel_historico.sql` | Tabelas `pombos`, `plantel` e `eventos`, regras do histórico compartilhado |
 | `supabase/04_admin.sql` | Tabela `administradores` e funções da tela de administrador (protegidas no banco) |
 | `supabase/05_aviso_novo_cadastro.sql` | Opcional: e-mail de aviso a cada nova conta (Resend grátis, chave no Vault) |
 | `supabase/03_fotos.sql` | Pasta privada `fotos` no Storage, regras de acesso e função `definir_foto` |
+| `supabase/06_seguranca_dados_por_usuario.sql` | Correções de segurança: dados e fotos de cada pombo por usuário, autor verdadeiro no histórico, limites de tamanho e quantidade. Depois dele, não rode de novo o 02, 03 e 04 |
+| `supabase/conferir_seguranca.sql` | Só leitura: confere se funções, tabelas e pasta de fotos estão protegidas |
 
 ## Etapas
 

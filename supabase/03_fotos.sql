@@ -12,6 +12,14 @@
 --  * Quem troca ou apaga: as mesmas pessoas que podem mudar nome, cor e pais do pombo
 --    (quem está com ele; se ninguém está, quem o tem no plantel).
 
+-- Proteção: depois do 06_seguranca_dados_por_usuario.sql este arquivo não deve ser rodado de novo
+-- (ele voltaria as regras antigas). Se aparecer o erro abaixo, está tudo certo: não precisa rodar.
+do $$ begin
+  if to_regclass('public.dados_pombo') is not null then
+    raise exception 'Este arquivo é antigo e não precisa ser rodado de novo: o 06 já foi aplicado.';
+  end if;
+end $$;
+
 -- ---------- Colunas com o caminho de cada foto ----------
 alter table public.pombos add column if not exists foto_olho text;
 alter table public.pombos add column if not exists foto_cabeca text;
