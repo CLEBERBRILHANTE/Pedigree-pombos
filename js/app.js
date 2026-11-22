@@ -418,6 +418,9 @@ function vFicha(id) {
   const pronto = f.id === id && !f.carregando;
   const donos = pronto ? f.donos : [];
   const filhos = pronto ? f.filhos : [];
+  const irm = pronto ? f.irmaos : { inteiros: [], pai: [], mae: [] };
+  const totalIrmaos = irm.inteiros.length + irm.pai.length + irm.mae.length;
+  const grupoIrmaos = (titulo, l) => l.length ? `<h3 class="subtit">${titulo} (${l.length})</h3>${listaParentes(l)}` : '';
   const corpo = `
     <div class="hero ${sexoCls(p.sexo)}">
       <span class="ring">${esc(anilha(p))}</span>
@@ -439,11 +442,15 @@ function vFicha(id) {
         ${d.data_entrada || d.data_saida ? `<small>${d.data_entrada ? 'Desde ' + dataBR(d.data_entrada) : ''}${d.data_saida ? (d.data_entrada ? ' até ' : 'Até ') + dataBR(d.data_saida) : ''}</small>` : ''}
       </li>`).join('')}</ul>` : '<p class="hint">Nenhum pombal tem este pombo no plantel.</p>'}
     </section>
+    <section class="section"><h2>Irmãos${pronto && totalIrmaos ? ` (${totalIrmaos})` : ''}</h2>
+      ${!p.pai_id && !p.mae_id ? '<p class="hint">Cadastre o pai e a mãe deste pombo para ver os irmãos dele.</p>'
+        : !pronto ? carregandoHtml : totalIrmaos
+          ? `${grupoIrmaos('Irmãos inteiros · mesmo pai e mesma mãe', irm.inteiros)}${grupoIrmaos('Meio-irmãos por parte de pai', irm.pai)}${grupoIrmaos('Meio-irmãos por parte de mãe', irm.mae)}`
+          : '<p class="hint">Nenhum irmão cadastrado no app.</p>'}
+      ${pronto && totalIrmaos && (!p.pai_id || !p.mae_id) ? `<p class="hint">Falta cadastrar ${!p.pai_id ? 'o pai' : 'a mãe'}: por isso ainda não dá para saber quem é irmão inteiro.</p>` : ''}
+    </section>
     <section class="section"><h2>Filhos (${filhos.length})</h2>
-      ${!pronto ? carregandoHtml : filhos.length ? `<ul class="list">${filhos.map(c => {
-        const conteudo = `<span class="sexbar"></span><span class="body"><span class="ring">${esc(c.anilha)}</span><span class="name">${esc(c.nome || 'Sem nome')}${c.cor ? ` · <span class="cor">${esc(c.cor)}</span>` : ''}</span><span class="meta">${c.pombais ? esc(c.pombais) : 'Sem pombal ativo'}</span></span><span class="side"><span class="sexsym ${sexoCls(c.sexo)}">${sym(c.sexo)}</span></span>`;
-        return `<li>${c.visivel ? `<a class="bird ${sexoCls(c.sexo)}" href="#/pombo/${c.id}">${conteudo}</a>` : `<div class="bird ${sexoCls(c.sexo)}">${conteudo}</div>`}</li>`;
-      }).join('')}</ul>` : '<p class="hint">Nenhum filho cadastrado no app.</p>'}
+      ${!pronto ? carregandoHtml : filhos.length ? listaParentes(filhos) : '<p class="hint">Nenhum filho cadastrado no app.</p>'}
     </section>
     </div>
     <section class="section col"><h2>Histórico</h2>
@@ -1020,18 +1027,45 @@ async function carregarPlantel() {
   state.dados = { carregado: true, erro: null, plantel: pl.data || [], pombos: new Map((po.data || []).map(p => [p.id, p])) };
 }
 
+// Lista de filhos ou irmãos (resultado de filhos_do_pombo).
+function listaParentes(l) {
+  return `<ul class="list">${l.map(c => {
+    const conteudo = `<span class="sexbar"></span><span class="body"><span class="ring">${esc(c.anilha)}</span><span class="name">${esc(c.nome || 'Sem nome')}${c.cor ? ` · <span class="cor">${esc(c.cor)}</span>` : ''}</span><span class="meta">${c.pombais ? esc(c.pombais) : 'Sem pombal ativo'}</span></span><span class="side"><span class="sexsym ${sexoCls(c.sexo)}">${sym(c.sexo)}</span></span>`;
+    return `<li>${c.visivel ? `<a class="bird ${sexoCls(c.sexo)}" href="#/pombo/${c.id}">${conteudo}</a>` : `<div class="bird ${sexoCls(c.sexo)}">${conteudo}</div>`}</li>`;
+  }).join('')}</ul>`;
+}
+
+// Irmãos = filhos do pai e da mãe (sem o próprio pombo).
+// Inteiros: filhos dos dois; meio-irmãos: filhos só de um deles.
+function separarIrmaos(id, doPai, daMae) {
+  const fora = l => (l || []).filter(c => c.id !== id);
+  const pai = fora(doPai), mae = fora(daMae);
+  const idsMae = new Set(mae.map(c => c.id)), idsPai = new Set(pai.map(c => c.id));
+  return {
+    inteiros: pai.filter(c => idsMae.has(c.id)),
+    pai: pai.filter(c => !idsMae.has(c.id)),
+    mae: mae.filter(c => !idsPai.has(c.id))
+  };
+}
+
+const fichaVazia = id => ({ id, carregando: true, erro: null, eventos: [], donos: [], filhos: [], irmaos: { inteiros: [], pai: [], mae: [] } });
+
 async function carregarFicha(id) {
-  state.ficha = { id, carregando: true, erro: null, eventos: [], donos: [], filhos: [] };
-  const [ev, dn, fl] = await Promise.all([
+  state.ficha = fichaVazia(id);
+  const p = pombo(id);
+  const semNada = Promise.resolve({ data: [], error: null });
+  const [ev, dn, fl, fp, fm] = await Promise.all([
     sb.from('eventos').select('*').eq('pombo_id', id).order('data', { ascending: true, nullsFirst: false }).order('criado_em', { ascending: true }),
     sb.rpc('donos_do_pombo', { p: id }),
-    sb.rpc('filhos_do_pombo', { p: id })
+    sb.rpc('filhos_do_pombo', { p: id }),
+    p && p.pai_id ? sb.rpc('filhos_do_pombo', { p: p.pai_id }) : semNada,
+    p && p.mae_id ? sb.rpc('filhos_do_pombo', { p: p.mae_id }) : semNada
   ]);
-  const p = pombo(id);
   if (p) await carregarUrlsFotos([p.foto_olho, p.foto_cabeca]);
   if (state.ficha.id !== id) return;
-  const err = ev.error || dn.error || fl.error;
-  state.ficha = { id, carregando: false, erro: err ? traduzir(err.message) : null, eventos: ev.data || [], donos: dn.data || [], filhos: fl.data || [] };
+  const err = ev.error || dn.error || fl.error || fp.error || fm.error;
+  state.ficha = { id, carregando: false, erro: err ? traduzir(err.message) : null, eventos: ev.data || [], donos: dn.data || [], filhos: fl.data || [],
+    irmaos: separarIrmaos(id, fp.data, fm.data) };
 }
 
 // Carrega o que a tela atual precisa e redesenha.
@@ -1042,7 +1076,7 @@ async function abrirRota() {
   let pid = null;
   if (r.nome === 'pombo' || r.nome === 'evento') pid = r.a;
   if (r.nome === 'editar') { const reg = state.dados.plantel.find(x => x.id === r.a); pid = reg && reg.pombo_id; }
-  if (pid && state.ficha.id !== pid) { state.ficha = { id: pid, carregando: true, erro: null, eventos: [], donos: [], filhos: [] }; render(); await carregarFicha(pid); }
+  if (pid && state.ficha.id !== pid) { state.ficha = fichaVazia(pid); render(); await carregarFicha(pid); }
   render();
 }
 
