@@ -35,6 +35,7 @@ App desenvolvido por **Cleber Felipe Brilhante**.
 | `supabase/06_seguranca_dados_por_usuario.sql` | Correções de segurança: dados e fotos de cada pombo por usuário, autor verdadeiro no histórico, limites de tamanho e quantidade. Depois dele, não rode de novo o 02, 03 e 04 |
 | `supabase/07_historico_permanente.sql` | Tirar o pombo do plantel não apaga mais o histórico dele; depois de tirar, os registros ficam guardados sem alteração |
 | `supabase/08_copiar_ancestrais.sql` | Ao cadastrar anilha que outro criador já cadastrou, copia os ancestrais dele como cópia própria e editável |
+| `supabase/09_vacinas.sql` | Vacinas de cada usuário, vacinação em massa (registra Saúde no histórico) e próximas doses |
 | `supabase/conferir_seguranca.sql` | Só leitura: confere se funções, tabelas e pasta de fotos estão protegidas |
 
 ## Etapas
