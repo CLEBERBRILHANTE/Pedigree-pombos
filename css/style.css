@@ -75,14 +75,12 @@ button:disabled { opacity: .6; cursor: wait; }
 .vazio p { margin: 0; color: var(--muted); max-width: 32ch; }
 .boasvindas { font-size: 15px; margin: 0; }
 
-.credit { text-align: center; font-size: 12.5px; color: var(--muted); margin: 0; padding-top: 10px; border-top: 1px solid var(--line); }
-.credit b { color: var(--fg); font-weight: 600; }
 
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(88px + env(safe-area-inset-bottom, 0px)); background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: 13.5px; font-weight: 500; z-index: 20; max-width: min(92vw, 400px); text-align: center; box-shadow: var(--shadow); }
 @media (prefers-reduced-motion: no-preference) { .view { animation: entrar .18s ease-out; } @keyframes entrar { from { opacity: .4; transform: translateY(4px); } } }
 
 /* Itens que só aparecem no computador */
-.tabbar .nav-brand, .tabbar .nav-credit { display: none; }
+.tabbar .nav-brand, .tabbar .nav-ajuda { display: none; }
 .form-grid { display: grid; gap: 16px; }
 .sessao { display: grid; gap: 10px; text-align: center; }
 
@@ -113,9 +111,8 @@ button:disabled { opacity: .6; cursor: wait; }
   .tabbar .nav-brand { display: flex; font-family: var(--f-display); font-size: 23px; font-weight: 700; white-space: nowrap; padding: 4px 8px 18px; margin-bottom: 6px; border-bottom: 1px solid var(--line); border-radius: 0; color: var(--fg); }
   .tabbar .nav-brand:hover { background: none; }
   .nav-brand img { width: 36px; height: 36px; }
-  .tabbar .nav-credit { display: block; margin: auto 0 0; padding: 14px 8px 0; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); line-height: 1.5; }
-  .nav-credit b { color: var(--fg); font-weight: 600; }
-  main.view .credit { display: none; }
+  .tabbar .nav-ajuda { display: flex; margin-top: auto; }
+  .so-celular { display: none !important; }
 
   .form-grid { grid-template-columns: 1fr 1fr; gap: 18px 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 24px; box-shadow: var(--shadow); max-width: 760px; }
   .form-grid .full { grid-column: 1 / -1; }
@@ -130,7 +127,7 @@ button:disabled { opacity: .6; cursor: wait; }
   .login .brand img { width: 96px; height: 96px; }
   .login .brand h1 { font-size: 64px; }
   .login .brand p { font-size: 18px; max-width: 26ch; }
-  .login .credit { grid-column: 1 / -1; }
+  .login .ajuda-login { grid-column: 2; }
   .toast { bottom: 32px; left: calc(50% + 124px); }
   .app.sem-abas ~ .toast { left: 50%; }
 }
@@ -300,3 +297,16 @@ main.view > .stack > [data-adm-atualizar] { justify-self: start; }
   .adm-lista { grid-template-columns: 1fr 1fr; }
   .adm-dados { max-width: 760px; }
 }
+
+/* ---------- Ajuda ---------- */
+.contatos { display: grid; gap: 10px; }
+.contatos .btn { justify-content: center; gap: 8px; overflow-wrap: anywhere; }
+.contatos svg, .ajuda-login summary svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.ajuda-login { gap: 10px; }
+.ajuda-login summary { cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.ajuda-login[open] summary { color: var(--fg); }
+.faq { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.faq summary { cursor: pointer; font-weight: 600; }
+.faq p { margin: 10px 0 0; color: var(--muted); line-height: 1.5; }
+@media (min-width: 600px) { .contatos { grid-template-columns: repeat(auto-fit, minmax(240px, max-content)); } .ajuda-contato, .faq { max-width: 760px; } }
+@media (min-width: 600px) { .ajuda-login .contatos { grid-template-columns: 1fr; } }
