@@ -1206,12 +1206,13 @@ function vLer() {
       <p>Tire uma foto do pedigree ou escolha o PDF. A inteligência artificial lê as anilhas, os nomes e os pais, e mostra tudo para você <b>conferir antes de cadastrar</b>.</p>
       <ul class="ler-dicas hint"><li>Foto de frente, com boa luz, sem sombra e sem cortar as bordas.</li><li>Se tiver o PDF, ele dá o melhor resultado.</li><li>Lê até os trisavós (5 gerações).</li></ul>
       ${arquivo}
-      <label class="btn ${L.arquivo ? 'btn-ghost' : 'btn-primary'} ler-escolher">${I.camera}${L.arquivo ? 'Trocar a foto ou o PDF' : 'Escolher foto ou PDF'}
+      <label class="btn ${L.arquivo ? 'btn-ghost' : 'btn-primary'} ler-escolher" ${L.lendo ? 'hidden' : ''}>${I.camera}${L.arquivo ? 'Trocar a foto ou o PDF' : 'Escolher foto ou PDF'}
         <input type="file" id="ler-arquivo" accept="image/*,application/pdf" hidden></label>
       ${L.erro ? `<p class="msg erro" role="alert">${esc(L.erro)}</p>` : ''}
-      ${state.admin && L.arquivo ? `<div class="field"><label for="ler-modelo">Modelo da IA (só o administrador vê)</label>
+      ${state.admin ? `<div class="field"><label for="ler-modelo">Modelo da IA (só o administrador vê)</label>
         <select class="input" id="ler-modelo"><option value="claude-haiku-5-5">Haiku 5.5 (mais barato)</option><option value="claude-sonnet-5-5" ${L.modelo === 'claude-sonnet-5-5' ? 'selected' : ''}>Sonnet 5.5 (mais preciso)</option></select></div>` : ''}
-      ${L.arquivo ? `<button type="button" class="btn btn-primary btn-block" data-ler-iniciar ${L.lendo || semCota ? 'disabled' : ''}>${L.lendo ? 'Lendo o pedigree… pode levar até 1 minuto' : 'Ler o pedigree'}</button>` : ''}
+      ${L.lendo ? `<div class="msg info ler-lendo" role="status"><span class="ler-roda" aria-hidden="true"></span><span><b>Lendo o pedigree…</b><br>Pode levar até 1 minuto. Não feche esta tela.</span></div>`
+        : L.arquivo ? `<button type="button" class="btn btn-primary btn-block" data-ler-iniciar ${semCota ? 'disabled' : ''}>${L.erro ? 'Tentar de novo' : 'Ler o pedigree'}</button>` : ''}
       ${cotaHtml()}
     </section>`, { voltar: '#/plantel' });
 }
@@ -1288,7 +1289,10 @@ function escolherArquivoLer(input) {
   if (pdf && f.size > MAX_PDF) { L.erro = 'Este PDF é grande demais (o limite é 3 MB). Tente tirar uma foto da folha.'; render(); return; }
   if (!pdf && !/^image\//.test(f.type)) { L.erro = 'Escolha uma foto (JPG, PNG) ou um PDF.'; render(); return; }
   Object.assign(L, { arquivo: f, nome: f.name || (pdf ? 'pedigree.pdf' : 'foto'), imagem: pdf ? null : URL.createObjectURL(f), erro: null });
-  render();
+  // Já começa a ler: não precisa tocar em outro botão.
+  const c = L.cota;
+  if (c && !c.erro && (c.admin || (c.hoje < c.limite_dia && c.mes < c.limite_mes))) lerPedigree();
+  else render();
 }
 
 const paraBase64 = blob => new Promise((ok, falha) => {
@@ -1626,6 +1630,7 @@ document.addEventListener('change', e => {
   if (e.target.id === 'e-tipo') ajustarCamposTipo();
   if (e.target.name === 'vac-pombo') contarVacinar();
   if (e.target.id === 'ler-arquivo') escolherArquivoLer(e.target);
+  if (e.target.id === 'ler-modelo') state.ler.modelo = e.target.value;
   if (e.target.name === 'ler-inc') contarLer();
   if (e.target.id === 'v-unica') { $('#v-qtd').disabled = $('#v-un').disabled = e.target.checked; }
 });
