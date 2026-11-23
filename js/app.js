@@ -145,6 +145,9 @@ const dataBR = d => d ? d.split('-').reverse().join('/') : '';
 const num = (n, casas = 0) => Number(n).toLocaleString('pt-BR', { maximumFractionDigits: casas });
 const pombo = id => (id && state.dados.pombos.get(id)) || null;
 const meuRegistro = id => state.dados.plantel.find(r => r.pombo_id === id) || null;
+// Pedigree só de pombos que estão ou já passaram pelo pombal do usuário (não de ancestrais nem de outros criadores).
+const podeEmitirPedigree = id => { const r = meuRegistro(id); return !!r && r.situacao !== 'referencia'; };
+const MSG_SO_MEU_POMBAL = 'Só dá para emitir o pedigree de pombos que estão ou já passaram pelo seu pombal.';
 const sexoCls = s => s === 'F' ? 'f' : s === 'M' ? 'm' : 'u';
 
 // "1402317/23 BRA" -> { numero, ano, pais }
@@ -418,8 +421,8 @@ function vFicha(id) {
   const r = meuRegistro(id);
   const ano = p.nascimento ? dataBR(p.nascimento) : String(p.ano);
   const acoes = r
-    ? `<a class="btn btn-primary" href="#/evento/${p.id}">${I.plus}Registrar no histórico</a><a class="btn btn-ghost" href="#/editar/${r.id}">${I.edit}Editar</a><a class="btn btn-ghost" href="#/pedigree/${p.id}">${I.tree}Pedigree em PDF</a>`
-    : `<a class="btn btn-primary" href="#/novo?anilha=${encodeURIComponent(anilha(p))}&situacao=referencia">${I.plus}Adicionar ao meu plantel</a><a class="btn btn-ghost" href="#/pedigree/${p.id}">${I.tree}Pedigree em PDF</a>`;
+    ? `<a class="btn btn-primary" href="#/evento/${p.id}">${I.plus}Registrar no histórico</a><a class="btn btn-ghost" href="#/editar/${r.id}">${I.edit}Editar</a>${podeEmitirPedigree(p.id) ? `<a class="btn btn-ghost" href="#/pedigree/${p.id}">${I.tree}Pedigree em PDF</a>` : ''}`
+    : `<a class="btn btn-primary" href="#/novo?anilha=${encodeURIComponent(anilha(p))}&situacao=referencia">${I.plus}Adicionar ao meu plantel</a>`;
   const pronto = f.id === id && !f.carregando;
   const donos = pronto ? f.donos : [];
   const filhos = pronto ? f.filhos : [];
@@ -617,19 +620,19 @@ function rotuloPos(n) {
 
 function vPedigreeEscolher() {
   if (!state.dados.carregado) return shell('pedigree', 'Pedigree', nomePombal(), erroDados() || carregandoHtml);
-  if (!state.dados.plantel.length) {
-    return shell('pedigree', 'Pedigree', nomePombal(), `${erroDados()}<div class="vazio">${I.tree}<h2>Nenhum pombo ainda</h2>
-      <p>Cadastre um pombo com pai e mãe para emitir o pedigree dele.</p><a class="btn btn-primary" href="#/novo">${I.plus}Cadastrar pombo</a></div>`);
+  if (!state.dados.plantel.some(r => r.situacao !== 'referencia')) {
+    return shell('pedigree', 'Pedigree', nomePombal(), `${erroDados()}<div class="vazio">${I.tree}<h2>Nenhum pombo do seu pombal ainda</h2>
+      <p>${MSG_SO_MEU_POMBAL} Cadastre um pombo do seu pombal, com pai e mãe, para emitir o pedigree dele.</p><a class="btn btn-primary" href="#/novo">${I.plus}Cadastrar pombo</a></div>`);
   }
   return shell('pedigree', 'Pedigree', 'Escolha o pombo', `${erroDados()}
-    <p class="hint">O pedigree sai em PDF (folha A4) com 5 gerações: o pombo, pais, avós, bisavós e trisavós. No cabeçalho vão os dados de <a href="#/conta">Meu pombal</a>.</p>
+    <p class="hint">O pedigree sai em PDF (folha A4) com 5 gerações: o pombo, pais, avós, bisavós e trisavós. No cabeçalho vão os dados de <a href="#/conta">Meu pombal</a>. Aparecem só os pombos que estão ou já passaram pelo seu pombal.</p>
     <div class="search">${I.search}<input class="input" id="q-ped" type="search" placeholder="Buscar por anilha, nome ou cor" value="${esc(state.q)}" aria-label="Buscar"></div>
     <ul class="list" id="lista-ped">${listaPedigreeHtml()}</ul>`);
 }
 
 function listaPedigreeHtml() {
   const q = state.q.trim().toLowerCase();
-  const l = state.dados.plantel.map(r => ({ r, p: pombo(r.pombo_id) }))
+  const l = state.dados.plantel.filter(r => r.situacao !== 'referencia').map(r => ({ r, p: pombo(r.pombo_id) }))
     .filter(({ p }) => p && (!q || [anilha(p), p.numero, p.nome, p.cor].some(v => v && String(v).toLowerCase().includes(q))))
     .sort((x, y) => ((y.r.situacao === 'ativo') - (x.r.situacao === 'ativo')) || (y.p.ano - x.p.ano) || x.p.numero.localeCompare(y.p.numero, 'pt-BR', { numeric: true }));
   return l.length ? l.map(({ r, p }) => itemPombo(p, r, `#/pedigree/${p.id}`)).join('') : '<li class="empty">Nenhum pombo encontrado.</li>';
@@ -654,6 +657,12 @@ function vPedigree(id) {
   if (!state.dados.carregado) return shell('pedigree', 'Pedigree', '', erroDados() || carregandoHtml, { voltar: '#/pedigree' });
   const p = pombo(id);
   if (!p) return shell('pedigree', 'Pedigree', '', '<div class="vazio"><h2>Pombo não encontrado</h2><a class="btn btn-ghost" href="#/pedigree">Escolher outro pombo</a></div>', { voltar: '#/pedigree' });
+  if (!podeEmitirPedigree(id)) {
+    const reg = meuRegistro(id);
+    return shell('pedigree', 'Pedigree', anilha(p), `<div class="vazio">${I.tree}<h2>Pedigree não disponível</h2>
+      <p>${MSG_SO_MEU_POMBAL} ${reg ? 'Este pombo está cadastrado só como ancestral. Se ele está ou esteve no seu pombal, edite o pombo e mude a situação.' : 'Este pombo não passou pelo seu pombal.'}</p>
+      ${reg ? `<a class="btn btn-primary" href="#/editar/${esc(reg.id)}">${I.edit}Editar o pombo</a>` : ''}<a class="btn btn-ghost" href="#/pedigree">Escolher outro pombo</a></div>`, { voltar: '#/pedigree' });
+  }
   const pos = arvore(id);
   const faltam = pos.slice(2).filter(x => !x).length;
   const r = meuRegistro(id);
@@ -719,6 +728,7 @@ async function imagensParaPdf(caminhos) {
 }
 
 async function gerarPedigreePDF(id, textoPrincipal, incluirFotos) {
+  if (!podeEmitirPedigree(id)) throw new Error(MSG_SO_MEU_POMBAL.replace('pedigree', 'pedigree (PDF)'));
   const JsPDF = await carregarJsPDF();
   const doc = new JsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
   const pos = arvore(id);
@@ -1323,7 +1333,7 @@ function vLerResultado() {
     <section class="card ler-card">
       <p class="msg ${R.erros.length ? 'erro' : 'ok'}">${R.salvos ? `<b>${R.salvos} ${R.salvos === 1 ? 'pombo cadastrado' : 'pombos cadastrados'}</b> e ligados como pais e filhos.` : 'Nenhum pombo foi cadastrado.'}</p>
       ${R.erros.length ? `<div class="msg erro"><p>Não deu para cadastrar:</p><ul>${R.erros.map(e => `<li>${esc(e)}</li>`).join('')}</ul></div>` : ''}
-      <div class="actions">${R.pomboId ? `<a class="btn btn-primary" href="#/pedigree/${esc(R.pomboId)}">${I.tree}Ver o pedigree</a><a class="btn btn-ghost" href="#/pombo/${esc(R.pomboId)}">Abrir a ficha</a>` : ''}</div>
+      <div class="actions">${R.pomboId ? `${podeEmitirPedigree(R.pomboId) ? `<a class="btn btn-primary" href="#/pedigree/${esc(R.pomboId)}">${I.tree}Ver o pedigree</a>` : ''}<a class="btn btn-ghost" href="#/pombo/${esc(R.pomboId)}">Abrir a ficha</a>` : ''}</div>
       <button type="button" class="btn btn-ghost btn-block" data-ler-outro>Ler outro pedigree</button>
     </section>`, { voltar: '#/plantel' });
 }
@@ -1511,7 +1521,7 @@ function vAjuda() {
         'É uma cópia sua: você pode mudar o que quiser, e nada muda para o outro criador. As fotos dele não vêm.'])}
       ${guia(I.tree, 'Tirar o pedigree para imprimir ou enviar', 'Folha pronta com 5 gerações', 'pedigree', 'Tela Pedigree', [
         'Toque em <b>Pedigree</b> na barra de baixo.',
-        'Escolha o pombo na lista.',
+        'Escolha o pombo na lista. Aparecem só os pombos que estão ou já passaram pelo seu pombal (os ancestrais não aparecem).',
         'Se quiser, escreva um texto para o quadro do pombo (linhagem, títulos).',
         'Toque em <b>Baixar pedigree em PDF</b>. O arquivo fica salvo no celular, pronto para imprimir ou mandar pelo WhatsApp.',
         'Os dados do seu pombal no alto da folha vêm de <a href="#/conta">Meu pombal</a>.'])}
