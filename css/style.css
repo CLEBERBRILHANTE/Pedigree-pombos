@@ -395,3 +395,10 @@ main.view > .stack > [data-adm-atualizar] { justify-self: start; }
 .ler-lendo { display: flex; gap: 12px; align-items: center; }
 .ler-roda { width: 22px; height: 22px; flex: none; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--accent); animation: girar .9s linear infinite; }
 @keyframes girar { to { transform: rotate(360deg); } }
+.saldo-ia { display: grid; gap: 8px; }
+.saldo-ia h2 { margin: 0; }
+.saldo-num { margin: 0; font-size: 17px; }
+.saldo-num b { font-family: var(--f-mono); }
+.saldo-num.acabando b { color: var(--erro); }
+.saldo-form summary { cursor: pointer; font-weight: 600; color: var(--accent); padding: 4px 0; }
+.saldo-form form { margin-top: 10px; }
