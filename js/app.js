@@ -250,8 +250,8 @@ function vPlantel() {
   const chip = (v, l) => `<button type="button" class="chip" data-filtro="${v}" aria-pressed="${state.filtro === v}">${l}</button>`;
   return shell('plantel', 'Plantel', nomePombal(), `${erroDados()}
     <div class="atalhos">
-      <a class="atalho" href="#/ler">${I.camera}<span><b>Ler pedigree</b><small>por foto ou PDF</small></span></a>
-      <a class="atalho so-celular" href="#/vacinas">${I.vacina}<span><b>Vacinas</b><small>vacinar o plantel</small></span></a>
+      <a class="atalho" href="#/ler">${I.camera}<span><b>Ler pedigree</b><small>foto ou PDF</small></span></a>
+      <a class="atalho so-celular" href="#/vacinas">${I.vacina}<span><b>Vacinas</b><small>do plantel</small></span></a>
     </div>
     <p class="resumo-plantel">${plural(ativos.length, 'pombo', 'pombos')} no pombal: ${plural(machos, 'macho', 'machos')} e ${plural(femeas, 'fêmea', 'fêmeas')}.</p>
     ${avisoVacinasHtml()}
@@ -1594,6 +1594,10 @@ function vAjuda() {
       <ol class="passos">${passos.map(x => `<li><span>${x}</span></li>`).join('')}</ol>
     </div></details>`;
   return shell('ajuda', 'Ajuda', 'Dúvidas e contato', `
+    <section class="card sobre-app"><h2>Sobre o app</h2>
+      <p>O ${esc(C.nomeApp)} foi idealizado por um ex-criador de pombos que, em sua época na columbofilia, sentia falta de um aplicativo simples para administrar o seu plantel.</p>
+      <p>Por esse motivo, ele desenvolveu este aplicativo, oferecido <b>gratuitamente</b> a todos os columbófilos, inclusive com a <b>leitura de pedigrees por inteligência artificial</b>.</p></section>
+
     <section class="card ajuda-contato"><h2>Fale com a gente</h2>
       <p class="hint">Ficou com dúvida, achou um erro ou quer sugerir uma melhoria? Mande uma mensagem.</p>${contatosHtml()}</section>
 
