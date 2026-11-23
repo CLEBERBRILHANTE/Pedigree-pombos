@@ -1117,13 +1117,14 @@ function vConta() {
   return shell('conta', 'Meu pombal', 'Conta e dados do pedigree', `
     <form id="f-perfil" class="form-grid">
       ${erro}
-      <p class="hint full">Estes dados vão aparecer no cabeçalho dos pedigrees que você emitir. O nome do pombal, seu nome e a cidade também aparecem no histórico dos pombos que passarem por você (e-mail e telefone não).</p>
+      <h2 class="form-tit full primeiro">Dados que saem no pedigree</h2>
+      <p class="hint full">Aparecem no alto dos pedigrees que você tirar. O nome do pombal, seu nome e a cidade também aparecem no histórico dos pombos que passarem por você. E-mail e telefone, não.</p>
       <div class="field"><label for="p-nome">Seu nome</label><input class="input" id="p-nome" maxlength="100" value="${esc(p.nome)}" autocomplete="name"></div>
       <div class="field"><label for="p-pombal">Nome do pombal</label><input class="input" id="p-pombal" maxlength="100" value="${esc(p.nome_pombal)}"></div>
       <div class="field full"><label for="p-cidade">Cidade, estado e país</label><input class="input" id="p-cidade" maxlength="150" value="${esc(p.cidade)}" placeholder="Ex.: Campinas - SP - Brasil"></div>
-      <div class="field"><label for="p-email">E-mail de contato</label><input class="input" id="p-email" maxlength="200" type="email" value="${esc(p.email_contato)}"></div>
-      <div class="field"><label for="p-tel">Telefone / WhatsApp</label><input class="input" id="p-tel" maxlength="40" type="tel" value="${esc(p.telefone)}"></div>
-      <button class="btn btn-primary btn-block full" type="submit" ${state.ocupado ? 'disabled' : ''}>Salvar</button>
+      <div class="field"><label for="p-email">E-mail de contato (opcional)</label><input class="input" id="p-email" maxlength="200" type="email" value="${esc(p.email_contato)}"></div>
+      <div class="field"><label for="p-tel">Telefone ou WhatsApp (opcional)</label><input class="input" id="p-tel" maxlength="40" type="tel" value="${esc(p.telefone)}"></div>
+      <button class="btn btn-primary btn-block full" type="submit" ${state.ocupado ? 'disabled' : ''}>Salvar meus dados</button>
     </form>
     ${logoPombalHtml(p)}
     <a class="btn btn-ghost btn-block so-celular" href="#/ajuda">${I.help}Ajuda e contato</a>
@@ -1187,11 +1188,11 @@ function vVacinas(r) {
     if (!v) return shell('vacinas', 'Vacinação', '', '<p class="msg erro">Vacina não encontrada.</p>', { voltar });
     return vVacinar(v);
   }
-  const novo = `<a class="icon-btn" href="#/vacinas/nova" aria-label="Cadastrar vacina">${I.plus}</a>`;
+  const novo = `<a class="btn btn-primary so-pc" href="#/vacinas/nova">${I.plus}Cadastrar vacina</a>`;
   if (!vc.vacinas.length) {
     return shell('vacinas', 'Vacinas', 'Vacinação do plantel', `<div class="vazio">${I.vacina}<h2>Nenhuma vacina cadastrada</h2>
       <p>Cadastre as vacinas que você usa, com a marca e de quanto em quanto tempo revacinar. Depois é só marcar os pombos vacinados de uma vez.</p>
-      <a class="btn btn-primary" href="#/vacinas/nova">${I.plus}Cadastrar vacina</a></div>`, { direita: novo });
+      <a class="btn btn-primary" href="#/vacinas/nova">${I.plus}Cadastrar vacina</a></div>`, { direita: novo, voltar: '#/plantel' });
   }
   const cards = vc.vacinas.map(v => {
     const l = situacaoVacina(v);
@@ -1204,13 +1205,13 @@ function vVacinas(r) {
       <div class="vac-tit"><h2>${esc(v.nome)}</h2>${v.marca ? `<span class="tag">${esc(v.marca)}</span>` : ''}</div>
       <p class="hint">${intervaloTxt(v.intervalo_dias)}</p>
       <p class="vac-status ${falta.length ? 'pendente' : 'ok'}">${status}</p>
-      <div class="vac-acoes"><a class="btn btn-primary" href="#/vacinas/vacinar/${esc(v.id)}">${I.vacina}Iniciar vacinação</a><a class="btn btn-ghost" href="#/vacinas/editar/${esc(v.id)}">${I.edit}Editar</a></div>
+      <div class="vac-acoes"><a class="btn btn-primary" href="#/vacinas/vacinar/${esc(v.id)}">${I.vacina}Vacinar agora</a><a class="btn btn-ghost" href="#/vacinas/editar/${esc(v.id)}">${I.edit}Editar</a></div>
     </li>`;
   }).join('');
   return shell('vacinas', 'Vacinas', 'Vacinação do plantel', `
-    <p class="hint">Só você vê suas vacinas. Cada vacinação vira um registro de Saúde no histórico do pombo. O app avisa na tela Plantel quando a revacinação estiver a ${DIAS_AVISO} dias ou menos.</p>
+    <p class="hint">Toque em <b>Vacinar agora</b> e marque os pombos que tomaram a vacina. Cada um ganha o registro no histórico. O app avisa na tela Plantel ${DIAS_AVISO} dias antes da próxima dose. Só você vê suas vacinas.</p>
     <ul class="list vac-lista">${cards}</ul>
-    <a class="btn btn-ghost btn-block" href="#/vacinas/nova">${I.plus}Cadastrar outra vacina</a>`, { direita: novo });
+    <a class="btn btn-ghost btn-block" href="#/vacinas/nova">${I.plus}Cadastrar outra vacina</a>`, { direita: novo, voltar: '#/plantel' });
 }
 
 function vFormVacina(v) {
@@ -1373,7 +1374,7 @@ function vLer() {
   const semCota = L.cota && (L.cota.erro || (!L.cota.admin && (L.cota.hoje >= L.cota.limite_dia || L.cota.mes >= L.cota.limite_mes)));
   const arquivo = L.arquivo ? `<div class="ler-arquivo">${L.imagem ? `<img src="${esc(L.imagem)}" alt="Pedigree escolhido">` : `<span class="ler-pdf">PDF</span>`}
       <b>${esc(L.nome)}</b></div>` : '';
-  return shell('ler', titulo, 'Foto ou PDF, com inteligência artificial', `
+  return shell('ler', titulo, 'Por foto ou PDF', `
     <section class="card ler-card">
       <p>Tire uma foto do pedigree ou escolha o PDF. A inteligência artificial lê as anilhas, os nomes e os pais, e mostra tudo para você <b>conferir antes de cadastrar</b>.</p>
       <ul class="ler-dicas hint"><li>Foto de frente, com boa luz, sem sombra e sem cortar as bordas.</li><li>Se tiver o PDF, ele dá o melhor resultado.</li><li>Lê até os trisavós (5 gerações).</li></ul>
@@ -1629,9 +1630,9 @@ function vAjuda() {
         'Pronto: a logo aparece no <b>canto de cima</b> de todos os pedigrees que você emitir.',
         'Para mudar, toque em <b>Trocar logo</b>. Para tirar, toque em <b>Remover logo</b>.'])}
       ${guia(I.vacina, 'Vacinar vários pombos de uma vez', 'Marque todos e confirme', 'vacinar', 'Tela de vacinação', [
-        'Abra <b>Vacinas</b>. No celular, o link fica no alto da tela Plantel.',
+        'Abra <b>Vacinas</b>. No celular, o botão fica no alto da tela Plantel.',
         'Na primeira vez, toque em <b>Cadastrar vacina</b>. Escreva o nome, a marca e de quanto em quanto tempo revacinar.',
-        'Toque em <b>Iniciar vacinação</b>. Aparecem os pombos que precisam da vacina, <b>já marcados</b>.',
+        'Toque em <b>Vacinar agora</b>. Aparecem os pombos que precisam da vacina, <b>já marcados</b>.',
         'Desmarque quem não foi vacinado e confira a data.',
         'Toque em <b>Confirmar vacinação</b>. Cada pombo ganha o registro no histórico e sai da lista até a próxima dose.'])}
       ${guia(I.vacina, 'Aviso de revacinação', 'O app lembra você', 'aviso', 'Aviso de revacinação na tela Plantel', [
