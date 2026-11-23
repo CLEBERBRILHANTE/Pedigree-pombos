@@ -38,6 +38,7 @@ App desenvolvido por **Cleber Felipe Brilhante**.
 | `supabase/08_copiar_ancestrais.sql` | Ao cadastrar anilha que outro criador já cadastrou, copia os ancestrais dele como cópia própria e editável |
 | `supabase/09_vacinas.sql` | Vacinas de cada usuário, vacinação em massa (registra Saúde no histórico) e próximas doses |
 | `supabase/10_leitura_ia.sql` | Leitura de pedigree com IA: limite de leituras por usuário (5/dia, 30/mês; admin sem limite) e custo na tela Admin |
+| `supabase/11_leituras_ia_admin.sql` | Tela Admin, aba "Leituras com IA": quem leu, quantas leituras (total e no mês), pombos lidos e custo; últimas 50 leituras; saldo do crédito da Anthropic com aviso na tela e por e-mail (Resend do passo 5) quando estiver acabando |
 | `api/ler-pedigree.mjs` | Função do servidor (Vercel) que manda a foto/PDF para a IA da Anthropic. Precisa da variável `ANTHROPIC_API_KEY` na Vercel; `MODELO_IA` é opcional (padrão `claude-haiku-5-5`) |
 | `supabase/conferir_seguranca.sql` | Só leitura: confere se funções, tabelas e pasta de fotos estão protegidas |
 

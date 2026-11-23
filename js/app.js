@@ -857,14 +857,79 @@ async function carregarAdmin(r) {
     const [res, us] = await Promise.all([sb.rpc('admin_resumo'), sb.rpc('admin_usuarios')]);
     const err = res.error || us.error;
     if (err) { a.erro = faltaSQL(err.message) ? 'Falta rodar o arquivo 04_admin.sql no Supabase.' : traduzir(err.message); return; }
-    const ia = await sb.rpc('admin_leituras_ia');
-    Object.assign(a, { carregado: true, erro: null, resumo: res.data, usuarios: us.data || [], ia: ia.error ? null : ia.data });
+    const [ia, saldo] = await Promise.all([sb.rpc('admin_leituras_ia'), sb.rpc('admin_saldo_ia')]);
+    Object.assign(a, { carregado: true, erro: null, resumo: res.data, usuarios: us.data || [], ia: ia.error ? null : ia.data, saldo: saldo.error ? null : saldo.data });
   }
   if (r.a === 'usuario' && r.b && !a.plantel[r.b]) {
     const { data, error } = await sb.rpc('admin_plantel_do_usuario', { p_usuario: r.b });
     a.plantel[r.b] = error ? { erro: traduzir(error.message) } : { lista: data || [] };
   }
   if (!r.a && a.aba === 'pombos' && !a.pombos) await buscarPombosAdmin();
+  if (!r.a && a.aba === 'ia' && !a.leituras) await buscarLeiturasAdmin();
+}
+
+// Leituras com IA: quem usou, quantas e quanto custou.
+async function buscarLeiturasAdmin() {
+  const [us, rec] = await Promise.all([sb.rpc('admin_leituras_ia_usuarios'), sb.rpc('admin_leituras_ia_recentes', { p_limite: 50 })]);
+  const err = us.error || rec.error;
+  state.adm.leituras = err
+    ? { erro: faltaSQL(err.message) ? 'Falta rodar o arquivo 11_leituras_ia_admin.sql no Supabase.' : traduzir(err.message) }
+    : { usuarios: us.data || [], recentes: rec.data || [] };
+}
+
+const dolar = v => 'US$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+const dataHoraCurta = t => t ? new Date(t).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+const nomeModelo = m => /haiku/.test(m || '') ? 'Haiku' : /sonnet/.test(m || '') ? 'Sonnet' : (m || '—');
+
+function avisoSaldoHtml() {
+  const s = state.adm.saldo;
+  if (!s || !s.acabando) return '';
+  return `<p class="msg erro" role="alert"><b>O crédito da leitura com IA está acabando:</b> restam cerca de ${dolar(Math.max(0, s.resta))}. Coloque mais crédito no <a href="https://console.anthropic.com/settings/billing" target="_blank" rel="noopener">site da Anthropic</a> e depois atualize o saldo na aba <b>Leituras com IA</b>.</p>`;
+}
+
+function saldoAdminHtml() {
+  const s = state.adm.saldo;
+  if (!s) return '<p class="msg info">Para ver o saldo do crédito e receber o aviso quando estiver acabando, rode o arquivo 11_leituras_ia_admin.sql no Supabase.</p>';
+  return `<section class="card saldo-ia"><h2>Crédito da Anthropic</h2>
+    <p class="saldo-num ${s.acabando ? 'acabando' : ''}">Resta cerca de <b>${dolar(Math.max(0, s.resta))}</b></p>
+    <p class="hint">Saldo de ${dolar(s.saldo)} ${s.desde ? 'em ' + dataHoraCurta(s.desde) : 'no começo'} · gasto desde então: ${dolar(s.gasto)}. É uma conta aproximada; o valor exato está no site da Anthropic.
+      Aviso na tela e por e-mail quando restar ${dolar(s.avisar_quando_restar)}${s.alerta_enviado_em ? ` (e-mail enviado em ${dataHoraCurta(s.alerta_enviado_em)})` : ''}.</p>
+    <details class="saldo-form"><summary>Coloquei mais crédito / corrigir o saldo</summary>
+      <form id="f-saldo-ia" class="form-grid" novalidate>
+        <div class="field"><label for="sd-saldo">Saldo que aparece no site da Anthropic (US$)</label><input class="input" id="sd-saldo" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Ex.: 10.00" required></div>
+        <div class="field"><label for="sd-avisar">Avisar quando restar (US$)</label><input class="input" id="sd-avisar" type="number" min="0" step="0.01" inputmode="decimal" value="${esc(s.avisar_quando_restar)}"></div>
+        <p class="msg erro full" id="sd-erro" role="alert" hidden></p>
+        <button class="btn btn-primary" type="submit">Salvar saldo</button>
+      </form></details></section>`;
+}
+
+async function salvarSaldoIA(form) {
+  const saldo = Number(String($('#sd-saldo').value).replace(',', '.'));
+  const avisar = $('#sd-avisar').value === '' ? null : Number(String($('#sd-avisar').value).replace(',', '.'));
+  if (!(saldo >= 0)) return mostrarErro('#sd-erro', 'Digite o saldo em dólares, ex.: 10.00');
+  const btn = form.querySelector('[type=submit]'); btn.disabled = true;
+  const { data, error } = await sb.rpc('admin_definir_saldo_ia', { p_saldo: saldo, p_avisar: avisar });
+  btn.disabled = false;
+  if (error) return mostrarErro('#sd-erro', traduzir(error.message));
+  state.adm.saldo = data;
+  render();
+  toast('Saldo atualizado.');
+}
+
+function leiturasAdminHtml() {
+  const L = state.adm.leituras;
+  if (!L) return carregandoHtml;
+  if (L.erro) return `<p class="msg erro">${esc(L.erro)}</p>`;
+  if (!L.usuarios.length) return saldoAdminHtml() + '<p class="hint">Ninguém leu um pedigree com IA ainda.</p>';
+  const quem = x => esc(x.nome_pombal || x.nome || x.email);
+  return `${saldoAdminHtml()}<section class="section"><h2>Por usuário</h2><ul class="list adm-lista">${L.usuarios.map(x => `<li><a class="adm-item" href="#/admin/usuario/${esc(x.user_id)}">
+      <span class="body"><b>${quem(x)}</b><span class="meta">${esc(x.email)}</span>
+      <span class="meta">Última leitura ${dataHoraCurta(x.ultima)} · ${num(x.pombos)} pombos lidos</span></span>
+      <span class="side"><span class="tag ok">${num(x.total)} ${x.total == 1 ? 'leitura' : 'leituras'}</span><span class="tag">${num(x.mes)} este mês</span><span class="tag">${dolar(x.custo_total)}</span></span>
+    </a></li>`).join('')}</ul></section>
+    <section class="section"><h2>Últimas leituras</h2><ul class="list adm-lista">${L.recentes.map(x => `<li><div class="adm-item">
+      <span class="body"><b>${quem(x)}</b><span class="meta">${dataHoraCurta(x.criado_em)} · ${esc(nomeModelo(x.modelo))} · ${num(x.pombos || 0)} pombos</span></span>
+      <span class="side"><span class="tag">${dolar(x.custo)}</span></span></div></li>`).join('')}</ul></section>`;
 }
 
 async function buscarPombosAdmin() {
@@ -923,7 +988,7 @@ function vAdmin(r) {
   const card = (n, rot, extra) => `<div class="adm-card"><b>${num(n || 0)}</b><span>${rot}</span>${extra ? `<small>${extra}</small>` : ''}</div>`;
   const chip = (v, l) => `<button type="button" class="chip" data-adm-aba="${v}" aria-pressed="${a.aba === v}">${l}</button>`;
   const usuarios = a.aba === 'usuarios';
-  return shell('admin', 'Administrador', 'Visão geral do app', `
+  return shell('admin', 'Administrador', 'Visão geral do app', `${avisoSaldoHtml()}
     <div class="adm-cards">
       ${card(s.usuarios, 'usuários', `${num(s.novos_7d || 0)} novos em 7 dias · ${num(s.novos_30d || 0)} em 30`)}
       ${card(s.ativos_30d, 'entraram nos últimos 30 dias', `${num(s.confirmados || 0)} com e-mail confirmado`)}
@@ -933,9 +998,9 @@ function vAdmin(r) {
       ${card(s.fotos, 'fotos', `${tamanho(s.fotos_bytes)} de 1 GB grátis`)}
       ${a.ia ? card(a.ia.mes, 'leituras com IA este mês', `custo aprox. US$ ${num(a.ia.custo_mes, 2)} · ${num(a.ia.usuarios_mes)} usuários · total ${num(a.ia.total)} (US$ ${num(a.ia.custo_total, 2)})`) : ''}
     </div>
-    <div class="chips">${chip('usuarios', 'Usuários e pombais')}${chip('pombos', 'Pombos')}</div>
-    <div class="search">${I.search}<input class="input" id="q-adm" type="search" placeholder="${usuarios ? 'Buscar por e-mail, nome, pombal ou cidade' : 'Buscar por anilha, nome ou cor'}" value="${esc(a.busca)}" aria-label="Buscar"></div>
-    <ul class="list ${usuarios ? 'adm-lista' : 'grade'}" id="lista-adm">${usuarios ? listaUsuariosAdminHtml() : listaPombosAdminHtml()}</ul>
+    <div class="chips">${chip('usuarios', 'Usuários e pombais')}${chip('pombos', 'Pombos')}${chip('ia', 'Leituras com IA')}</div>
+    ${a.aba === 'ia' ? leiturasAdminHtml() : `<div class="search">${I.search}<input class="input" id="q-adm" type="search" placeholder="${usuarios ? 'Buscar por e-mail, nome, pombal ou cidade' : 'Buscar por anilha, nome ou cor'}" value="${esc(a.busca)}" aria-label="Buscar"></div>
+    <ul class="list ${usuarios ? 'adm-lista' : 'grade'}" id="lista-adm">${usuarios ? listaUsuariosAdminHtml() : listaPombosAdminHtml()}</ul>`}
     <button type="button" class="btn btn-ghost" data-adm-atualizar>Atualizar números</button>`);
 }
 
@@ -1580,8 +1645,8 @@ document.addEventListener('click', async e => {
     toast('Vacina apagada.');
     return;
   }
-  if (d.admAba) { state.adm.aba = d.admAba; state.adm.busca = ''; render(); if (d.admAba === 'pombos' && !state.adm.pombos) { await buscarPombosAdmin(); render(); } return; }
-  if (t.hasAttribute('data-adm-atualizar')) { state.adm = Object.assign(state.adm, { carregado: false, pombos: null, plantel: {} }); render(); await abrirRota(); toast('Números atualizados.'); return; }
+  if (d.admAba) { state.adm.aba = d.admAba; state.adm.busca = ''; render(); if (d.admAba === 'pombos' && !state.adm.pombos) { await buscarPombosAdmin(); render(); } if (d.admAba === 'ia' && !state.adm.leituras) { await buscarLeiturasAdmin(); render(); } return; }
+  if (t.hasAttribute('data-adm-atualizar')) { state.adm = Object.assign(state.adm, { carregado: false, pombos: null, leituras: null, plantel: {} }); render(); await abrirRota(); toast('Números atualizados.'); return; }
   if (d.pdf) {
     const rotulo = t.innerHTML;
     t.disabled = true; t.textContent = 'Gerando PDF…';
@@ -1765,6 +1830,7 @@ document.addEventListener('submit', e => {
   if (id === 'f-vacina') return salvarVacina(e.target);
   if (id === 'f-vacinar') return confirmarVacinacao(e.target);
   if (id === 'f-ler') return salvarLeitura(e.target);
+  if (id === 'f-saldo-ia') return salvarSaldoIA(e.target);
   if (id === 'f-auth') {
     const email = v('#a-email'), senha = $('#a-senha').value;
     if (state.auth === 'criar') {
