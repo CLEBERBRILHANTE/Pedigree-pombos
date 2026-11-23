@@ -428,3 +428,18 @@ main.view > .stack > [data-adm-atualizar] { justify-self: start; }
   .guia-corpo { grid-template-columns: 260px 1fr; align-items: start; }
   .guia-corpo:not(:has(.guia-img)) { grid-template-columns: 1fr; }
 }
+
+/* Logo do pombal (Meu pombal) */
+.logo-caixa { display: grid; grid-template-columns: 120px 1fr; gap: 16px; align-items: start; }
+.logo-caixa > img, .logo-caixa > .foto-vazia { width: 120px; height: 120px; object-fit: contain; border-radius: 14px; border: 1px solid var(--line); background: #fff; }
+.logo-caixa > .foto-vazia { display: grid; place-content: center; justify-items: center; gap: 6px; color: var(--muted); font-size: 14px; border-style: dashed; background: var(--surface); }
+.logo-texto { display: grid; gap: 10px; min-width: 0; }
+.logo-texto > p:first-child { margin: 0; font-size: 16px; line-height: 1.4; }
+.logo-acoes { display: flex; gap: 8px; flex-wrap: wrap; }
+.logo-pombal .hint { margin: 0; }
+@media (max-width: 420px) {
+  .logo-caixa { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+  .logo-acoes { justify-content: center; }
+  .logo-acoes .btn { flex: 1 1 100%; justify-content: center; }
+}
+@media (min-width: 960px) { .logo-pombal { max-width: 760px; } }

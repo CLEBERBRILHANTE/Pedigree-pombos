@@ -740,6 +740,16 @@ async function gerarPedigreePDF(id, textoPrincipal, incluirFotos) {
   // Cabeçalho: dados do pombal
   const titulo = [perfil.nome, perfil.nome_pombal].map(x => (x || '').trim()).filter(Boolean)
     .filter((x, i, a) => a.findIndex(y => y.toLowerCase() === x.toLowerCase()) === i).join(' - ');
+  // Logo do pombal no canto de cima, à esquerda (até 24 mm de altura e 40 mm de largura).
+  let logo = null;
+  if (perfil.logo) { try { [logo] = await imagensParaPdf([perfil.logo]); } catch (e) { logo = null; } }
+  let logoW = 0, logoH = 0;
+  if (logo && logo.w && logo.h) {
+    const esc_ = Math.min(40 / logo.w, 24 / logo.h);
+    logoW = logo.w * esc_; logoH = logo.h * esc_;
+    try { doc.addImage(logo.dados, 'JPEG', M, 6 + (24 - logoH) / 2, logoW, logoH); } catch (e) { logoW = logoH = 0; }
+  }
+  const larguraTexto = logoW ? W - 2 * (M + logoW + 3) : W - 2 * M;
   const linhasCab = [
     [titulo || 'Pedigree', 13],
     [(perfil.cidade || '').toUpperCase(), 9],
@@ -751,12 +761,12 @@ async function gerarPedigreePDF(id, textoPrincipal, incluirFotos) {
   doc.setFont('helvetica', 'bold');
   linhasCab.forEach(([t, tam], i) => {
     doc.setFontSize(tam);
-    doc.text(textoPdf(t), W / 2, y, { align: 'center', maxWidth: W - 2 * M });
+    doc.text(textoPdf(t), W / 2, y, { align: 'center', maxWidth: larguraTexto });
     y += tam * PT * 1.25 + (i === 0 ? 0.6 : 0);
   });
 
   // Árvore
-  const topo = Math.max(y + 3, 36), base = 281, H = base - topo;
+  const topo = Math.max(y + 3, logoH ? 33 : 0, 36), base = 281, H = base - topo;
   const colunas = [ // x, largura, altura do quadro, tamanho da anilha, tamanho do texto
     { x: 10, w: 32, h: 72, fa: 10, ft: 8 },
     { x: 46, w: 37, h: H / 2 * 0.72, fa: 9, ft: 7.5 },
@@ -1014,6 +1024,73 @@ function vAdmin(r) {
     <button type="button" class="btn btn-ghost" data-adm-atualizar>Atualizar números</button>`);
 }
 
+// ----- Logo do pombal (sai no topo do pedigree em PDF) -----
+function logoPombalHtml(p) {
+  const caminho = p.logo, url = urlFoto(caminho), enviando = state.logoEnviando;
+  if (caminho && !url && !enviando && !state.logoCarregando) {
+    state.logoCarregando = true;
+    carregarUrlsFotos([caminho]).finally(() => { state.logoCarregando = false; if (urlFoto(caminho) && rota().nome === 'conta') render(); });
+  }
+  const img = enviando ? `<div class="foto-vazia"><span>Enviando…</span></div>`
+    : url ? `<img src="${esc(url)}" alt="Logo do pombal">`
+    : caminho ? `<div class="foto-vazia"><span>Carregando…</span></div>`
+    : `<div class="foto-vazia">${I.camera}<span>Sem logo</span></div>`;
+  return `<section class="section logo-pombal"><h2>Logo do pombal</h2>
+    <div class="logo-caixa">${img}
+      <div class="logo-texto">
+        <p>A logo sai no <b>topo dos pedigrees</b> que você emitir. Só você vê e pode trocar.</p>
+        ${enviando ? '' : `<div class="logo-acoes">
+          <label class="btn ${caminho ? 'btn-ghost' : 'btn-primary'}">${I.camera}${caminho ? 'Trocar logo' : 'Escolher a logo'}<input type="file" accept="image/*" data-logo hidden></label>
+          ${caminho ? '<button type="button" class="btn btn-ghost" data-logo-remover>Remover logo</button>' : ''}</div>`}
+        <p class="hint">Pode ser uma foto do celular ou uma imagem do computador. O app diminui a imagem antes de enviar.</p>
+      </div></div></section>`;
+}
+
+function erroLogo(m) {
+  const s = String(m || '');
+  if (/logo|row-level security|unauthorized|403|perfis_logo|column/i.test(s)) return 'O banco ainda não está pronto para a logo: falta rodar o arquivo 12_logo_pombal.sql no Supabase.';
+  return erroFoto(s);
+}
+
+async function enviarLogo(input) {
+  const arquivo = input.files && input.files[0];
+  input.value = '';
+  if (!arquivo) return;
+  if (arquivo.type && !arquivo.type.startsWith('image/')) { toast('Escolha um arquivo de imagem.'); return; }
+  const anterior = state.perfil && state.perfil.logo;
+  state.logoEnviando = true; render();
+  let caminho = null;
+  try {
+    const blob = await comprimirFoto(arquivo, 600, 0.85);
+    caminho = `${state.session.user.id}/logo/logo-${Date.now()}.jpg`;
+    const up = await sb.storage.from('fotos').upload(caminho, blob, { contentType: 'image/jpeg', cacheControl: '31536000', upsert: false });
+    if (up.error) { caminho = null; throw up.error; }
+    const { data, error } = await sb.from('perfis').update({ logo: caminho }).eq('id', state.session.user.id).select().single();
+    if (error) throw error;
+    state.perfil = data;
+    state.fotoUrls.set(caminho, { url: URL.createObjectURL(blob), ate: Date.now() + 50 * 60 * 1000 });
+    if (anterior && anterior !== caminho) sb.storage.from('fotos').remove([anterior]);
+    toast('Logo salva. Ela vai sair nos próximos pedigrees.');
+  } catch (err) {
+    if (caminho) sb.storage.from('fotos').remove([caminho]);
+    toast(erroLogo(err.message || err));
+  }
+  state.logoEnviando = false;
+  render();
+}
+
+async function removerLogo(btn) {
+  const anterior = state.perfil && state.perfil.logo;
+  if (!anterior || !confirm('Remover a logo do pombal? Os próximos pedigrees vão sair sem logo.')) return;
+  btn.disabled = true;
+  const { data, error } = await sb.from('perfis').update({ logo: null }).eq('id', state.session.user.id).select().single();
+  if (error) { btn.disabled = false; toast(erroLogo(error.message)); return; }
+  state.perfil = data;
+  sb.storage.from('fotos').remove([anterior]);
+  render();
+  toast('Logo removida.');
+}
+
 function vConta() {
   const p = state.perfil || {};
   const erro = state.perfilErro ? `<p class="msg erro full" role="alert">${esc(state.perfilErro)}</p>` : '';
@@ -1029,6 +1106,7 @@ function vConta() {
       <div class="field"><label for="p-tel">Telefone / WhatsApp</label><input class="input" id="p-tel" maxlength="40" type="tel" value="${esc(p.telefone)}"></div>
       <button class="btn btn-primary btn-block full" type="submit" ${state.ocupado ? 'disabled' : ''}>Salvar</button>
     </form>
+    ${logoPombalHtml(p)}
     <a class="btn btn-ghost btn-block so-celular" href="#/ajuda">${I.help}Ajuda e contato</a>
     <div class="sessao"><p class="hint">Conectado como <b>${esc(email)}</b></p>
     <button class="btn btn-ghost" type="button" data-sair>Sair da conta</button></div>`);
@@ -1485,7 +1563,7 @@ async function salvarLeitura(form) {
 }
 
 // ----- Ajuda -----
-const GUIA_ALT = { cadastrar: 600, ler: 440, pedigree: 560, vacinar: 520, aviso: 420, irmaos: 560 }; // altura das imagens (largura 390)
+const GUIA_ALT = { cadastrar: 600, ler: 440, pedigree: 560, vacinar: 520, aviso: 420, irmaos: 560, logo: 300 }; // altura das imagens (largura 390)
 function vAjuda() {
   const q = (t, r) => `<details class="faq"><summary>${t}</summary><p>${r}</p></details>`;
   // Guia: um assunto por vez, passos curtos e numerados, com a imagem da tela.
@@ -1525,6 +1603,12 @@ function vAjuda() {
         'Se quiser, escreva um texto para o quadro do pombo (linhagem, títulos).',
         'Toque em <b>Baixar pedigree em PDF</b>. O arquivo fica salvo no celular, pronto para imprimir ou mandar pelo WhatsApp.',
         'Os dados do seu pombal no alto da folha vêm de <a href="#/conta">Meu pombal</a>.'])}
+      ${guia(I.camera, 'Colocar a logo do pombal no pedigree', 'Sua marca no alto da folha', 'logo', 'Parte Logo do pombal na tela Meu pombal', [
+        'Toque em <b>Meu pombal</b> na barra de baixo.',
+        'Desça até <b>Logo do pombal</b> e toque em <b>Escolher a logo</b>.',
+        'Escolha a imagem da logo no celular ou no computador. Também dá para tirar uma foto da logo impressa.',
+        'Pronto: a logo aparece no <b>canto de cima</b> de todos os pedigrees que você emitir.',
+        'Para mudar, toque em <b>Trocar logo</b>. Para tirar, toque em <b>Remover logo</b>.'])}
       ${guia(I.vacina, 'Vacinar vários pombos de uma vez', 'Marque todos e confirme', 'vacinar', 'Tela de vacinação', [
         'Abra <b>Vacinas</b>. No celular, o link fica no alto da tela Plantel.',
         'Na primeira vez, toque em <b>Cadastrar vacina</b>. Escreva o nome, a marca e de quanto em quanto tempo revacinar.',
@@ -1683,10 +1767,11 @@ async function recarregarTudo(pid) {
 
 // ---------- Eventos ----------
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-ler-iniciar],[data-ler-escolher],[data-ler-outro],[data-vac-apagar],[data-vac-marcar],[data-adm-aba],[data-adm-atualizar],[data-foto-remover],[data-pdf],[data-auth],[data-sair],[data-filtro],[data-hist],[data-sexo],[data-remover],[data-apagar-evento]');
+  const t = e.target.closest('[data-ler-iniciar],[data-ler-escolher],[data-ler-outro],[data-vac-apagar],[data-vac-marcar],[data-adm-aba],[data-adm-atualizar],[data-foto-remover],[data-logo-remover],[data-pdf],[data-auth],[data-sair],[data-filtro],[data-hist],[data-sexo],[data-remover],[data-apagar-evento]');
   if (!t) return;
   const d = t.dataset;
   if (d.fotoRemover) { removerFoto(t); return; }
+  if (t.hasAttribute('data-logo-remover')) { removerLogo(t); return; }
   if (t.hasAttribute('data-ler-iniciar')) { lerPedigree(); return; }
   if (t.hasAttribute('data-ler-escolher')) { abrirEscolhaLer(); return; }
   if (t.hasAttribute('data-ler-outro')) {
@@ -1769,6 +1854,7 @@ document.addEventListener('input', e => {
 
 document.addEventListener('change', e => {
   if (e.target.matches('input[data-foto]')) enviarFoto(e.target);
+  if (e.target.matches('input[data-logo]')) enviarLogo(e.target);
   if (e.target.id === 'f-sit') ajustarCamposSituacao();
   if (e.target.id === 'e-tipo') ajustarCamposTipo();
   if (e.target.name === 'vac-pombo') contarVacinar();
