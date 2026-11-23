@@ -1206,8 +1206,7 @@ function vLer() {
       <p>Tire uma foto do pedigree ou escolha o PDF. A inteligência artificial lê as anilhas, os nomes e os pais, e mostra tudo para você <b>conferir antes de cadastrar</b>.</p>
       <ul class="ler-dicas hint"><li>Foto de frente, com boa luz, sem sombra e sem cortar as bordas.</li><li>Se tiver o PDF, ele dá o melhor resultado.</li><li>Lê até os trisavós (5 gerações).</li></ul>
       ${arquivo}
-      <label class="btn ${L.arquivo ? 'btn-ghost' : 'btn-primary'} ler-escolher" ${L.lendo ? 'hidden' : ''}>${I.camera}${L.arquivo ? 'Trocar a foto ou o PDF' : 'Escolher foto ou PDF'}
-        <input type="file" id="ler-arquivo" accept="image/*,application/pdf" hidden></label>
+      <button type="button" class="btn ${L.arquivo ? 'btn-ghost' : 'btn-primary'} ler-escolher" data-ler-escolher ${L.lendo ? 'hidden' : ''}>${I.camera}${L.arquivo ? 'Trocar a foto ou o PDF' : 'Escolher foto ou PDF'}</button>
       ${L.erro ? `<p class="msg erro" role="alert">${esc(L.erro)}</p>` : ''}
       ${state.admin ? `<div class="field"><label for="ler-modelo">Modelo da IA (só o administrador vê)</label>
         <select class="input" id="ler-modelo"><option value="claude-haiku-5-5">Haiku 5.5 (mais barato)</option><option value="claude-sonnet-5-5" ${L.modelo === 'claude-sonnet-5-5' ? 'selected' : ''}>Sonnet 5.5 (mais preciso)</option></select></div>` : ''}
@@ -1278,6 +1277,21 @@ function posicoesIncluidas() {
   const inc = new Set();
   for (const n of lidas) if (marcado.has(n) && (n === 1 || inc.has(n >> 1))) inc.add(n);
   return [...inc];
+}
+
+// O campo de arquivo fica fora da tela do app: assim ele não some se a tela for redesenhada
+// enquanto a janela de escolher arquivo está aberta (o login renova a sessão quando a janela volta).
+let campoArquivoLer;
+function abrirEscolhaLer() {
+  if (!campoArquivoLer) {
+    campoArquivoLer = document.createElement('input');
+    campoArquivoLer.type = 'file';
+    campoArquivoLer.accept = 'image/*,application/pdf,.pdf';
+    campoArquivoLer.hidden = true;
+    campoArquivoLer.addEventListener('change', () => { escolherArquivoLer(campoArquivoLer); campoArquivoLer.value = ''; });
+    document.body.appendChild(campoArquivoLer);
+  }
+  campoArquivoLer.click();
 }
 
 function escolherArquivoLer(input) {
@@ -1541,11 +1555,12 @@ async function recarregarTudo(pid) {
 
 // ---------- Eventos ----------
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-ler-iniciar],[data-ler-outro],[data-vac-apagar],[data-vac-marcar],[data-adm-aba],[data-adm-atualizar],[data-foto-remover],[data-pdf],[data-auth],[data-sair],[data-filtro],[data-hist],[data-sexo],[data-remover],[data-apagar-evento]');
+  const t = e.target.closest('[data-ler-iniciar],[data-ler-escolher],[data-ler-outro],[data-vac-apagar],[data-vac-marcar],[data-adm-aba],[data-adm-atualizar],[data-foto-remover],[data-pdf],[data-auth],[data-sair],[data-filtro],[data-hist],[data-sexo],[data-remover],[data-apagar-evento]');
   if (!t) return;
   const d = t.dataset;
   if (d.fotoRemover) { removerFoto(t); return; }
   if (t.hasAttribute('data-ler-iniciar')) { lerPedigree(); return; }
+  if (t.hasAttribute('data-ler-escolher')) { abrirEscolhaLer(); return; }
   if (t.hasAttribute('data-ler-outro')) {
     if (state.ler.imagem) URL.revokeObjectURL(state.ler.imagem);
     state.ler = lerVazio();
@@ -1629,7 +1644,6 @@ document.addEventListener('change', e => {
   if (e.target.id === 'f-sit') ajustarCamposSituacao();
   if (e.target.id === 'e-tipo') ajustarCamposTipo();
   if (e.target.name === 'vac-pombo') contarVacinar();
-  if (e.target.id === 'ler-arquivo') escolherArquivoLer(e.target);
   if (e.target.id === 'ler-modelo') state.ler.modelo = e.target.value;
   if (e.target.name === 'ler-inc') contarLer();
   if (e.target.id === 'v-unica') { $('#v-qtd').disabled = $('#v-un').disabled = e.target.checked; }
