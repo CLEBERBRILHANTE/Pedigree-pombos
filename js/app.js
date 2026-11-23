@@ -83,6 +83,7 @@ const contatosHtml = () => `<div class="contatos">
 </div>`;
 
 // ---------- Telas de acesso ----------
+const mostrarSenhaHtml = '<label class="check"><input type="checkbox" data-mostrar-senha> Mostrar a senha</label>';
 function vAuth() {
   const a = state.auth;
   const msg = state.authMsg ? `<p class="msg ${state.authMsg.tipo}" role="alert">${esc(state.authMsg.texto)}</p>` : '';
@@ -102,6 +103,8 @@ function vAuth() {
       <h2>Criar nova senha</h2>
       ${msg}
       <div class="field"><label for="a-senha">Nova senha</label><input class="input" id="a-senha" type="password" minlength="8" required autocomplete="new-password"></div>
+      ${mostrarSenhaHtml}
+      <p class="hint">Use pelo menos 8 letras ou números.</p>
       <button class="btn btn-primary btn-block" type="submit" ${dis}>Salvar nova senha</button>
     </form>`;
   } else {
@@ -113,15 +116,16 @@ function vAuth() {
       </div>
       ${msg}
       ${criar ? `<div class="field"><label for="a-nome">Seu nome</label><input class="input" id="a-nome" maxlength="100" required autocomplete="name"></div>
-      <div class="field"><label for="a-pombal">Nome do pombal</label><input class="input" id="a-pombal" maxlength="100" placeholder="Ex.: Pombal Santa Rita"></div>` : ''}
+      <div class="field"><label for="a-pombal">Nome do pombal (opcional)</label><input class="input" id="a-pombal" maxlength="100" placeholder="Ex.: Pombal Santa Rita"></div>` : ''}
       <div class="field"><label for="a-email">E-mail</label><input class="input" id="a-email" type="email" required autocomplete="email"></div>
       <div class="field"><label for="a-senha">Senha</label><input class="input" id="a-senha" type="password" minlength="${criar ? 8 : 6}" required autocomplete="${criar ? 'new-password' : 'current-password'}"></div>
+      ${mostrarSenhaHtml}
       <button class="btn btn-primary btn-block" type="submit" ${dis}>${state.ocupado ? 'Aguarde…' : criar ? 'Criar conta' : 'Entrar'}</button>
-      ${criar ? '<p class="hint">A senha precisa ter pelo menos 8 caracteres. Seu plantel e os dados dos seus pombos (nome, cor, pais e fotos) são só seus; o histórico de provas de cada pombo é compartilhado com quem tiver a mesma anilha.</p>' : '<button type="button" class="link" data-auth="esqueci">Esqueci minha senha</button>'}
+      ${criar ? '<p class="hint">A senha precisa ter pelo menos 8 letras ou números.</p><p class="hint">Seus pombos e suas fotos ficam só com você. O histórico de provas de cada pombo aparece para quem tiver a mesma anilha.</p>' : '<button type="button" class="link" data-auth="esqueci">Esqueci minha senha</button><p class="hint centro">Primeira vez aqui? Toque em <b>Criar conta</b>, lá em cima.</p>'}
     </form>`;
   }
   return `<div class="wrap login view">
-    <div class="brand"><img src="img/icone.svg" alt=""><h1>${esc(C.nomeApp)}</h1><p>Cadastre seu plantel e emita pedigrees com a árvore completa.</p></div>
+    <div class="brand"><img src="img/icone.svg" alt=""><h1>${esc(C.nomeApp)}</h1><p>Cadastre seus pombos e tire o pedigree pronto para imprimir. É grátis.</p></div>
     ${form}
     <details class="card ajuda-login"><summary>${I.help}Precisa de ajuda?</summary>
       <p class="hint">Fale com a gente pelo WhatsApp ou por e-mail.</p>${contatosHtml()}</details>
@@ -171,7 +175,7 @@ function rota() {
 function shell(r, titulo, sub, corpo, { voltar = null, direita = '' } = {}) {
   const ativa = ['pombo', 'editar', 'evento'].includes(r) ? 'plantel' : r === 'ler' ? 'novo' : r;
   const aba = (n, ico, label) => `<a href="#/${n}" ${ativa === n ? 'aria-current="page"' : ''}>${ico}<span>${label}</span></a>`;
-  const ajuda = r === 'ajuda' ? '' : `<a class="icon-btn so-celular" href="#/ajuda" aria-label="Ajuda">${I.help}</a>`;
+  const ajuda = r === 'ajuda' ? '' : `<a class="btn-topo so-celular" href="#/ajuda">${I.help}<span>Ajuda</span></a>`;
   return `<header class="topbar wrap">${voltar ? `<a class="icon-btn" href="${voltar}" aria-label="Voltar">${I.back}</a>` : ''}
     <h1>${esc(titulo)}${sub ? `<span class="sub">${esc(sub)}</span>` : ''}</h1>${ajuda}${direita}</header>
   <main class="view wrap"><div class="stack">${corpo}</div></main>
@@ -214,7 +218,7 @@ function itemPombo(p, r, href) {
     <span class="sexbar"></span>
     <span class="body"><span class="ring">${esc(anilha(p))}</span>
       <span class="name">${esc(p.nome || 'Sem nome')}${p.cor ? ` · <span class="cor">${esc(p.cor)}</span>` : ''}</span>
-      <span class="meta">Pai <span class="mono">${pai ? esc(anilha(pai)) : '—'}</span> · Mãe <span class="mono">${mae ? esc(anilha(mae)) : '—'}</span></span></span>
+      <span class="meta">Pai: <span class="mono">${pai ? esc(anilha(pai)) : '—'}</span> · Mãe: <span class="mono">${mae ? esc(anilha(mae)) : '—'}</span></span></span>
     <span class="side"><span class="sexsym ${sexoCls(p.sexo)}" title="${sexoTxt(p.sexo)}">${sym(p.sexo)}</span>${tag}</span>
   </a></li>`;
 }
@@ -229,7 +233,7 @@ function listaHtml() {
 }
 
 function vPlantel() {
-  const novo = `<a class="icon-btn" href="#/novo" aria-label="Cadastrar pombo">${I.plus}</a>`;
+  const novo = `<a class="btn btn-primary so-pc" href="#/novo">${I.plus}Cadastrar pombo</a>`;
   if (!state.dados.carregado) return shell('plantel', 'Plantel', nomePombal(), erroDados() || carregandoHtml, { direita: novo });
   const todos = state.dados.plantel;
   if (!todos.length) {
@@ -240,14 +244,19 @@ function vPlantel() {
         <a class="btn btn-ghost" href="#/ler">${I.camera}Ler pedigree por foto ou PDF</a></div>`, { direita: novo });
   }
   const ativos = todos.filter(r => r.situacao === 'ativo').map(r => pombo(r.pombo_id)).filter(Boolean);
-  const noPlantel = todos.filter(r => r.situacao !== 'referencia').length;
-  const ancestrais = todos.length - noPlantel;
+  const ancestrais = todos.filter(r => r.situacao === 'referencia').length;
+  const machos = ativos.filter(p => p.sexo === 'M').length, femeas = ativos.filter(p => p.sexo === 'F').length;
+  const plural = (n, um, varios) => `<b>${n}</b> ${n === 1 ? um : varios}`;
   const chip = (v, l) => `<button type="button" class="chip" data-filtro="${v}" aria-pressed="${state.filtro === v}">${l}</button>`;
   return shell('plantel', 'Plantel', nomePombal(), `${erroDados()}
-    <div class="stats"><a class="stats-link so-celular" href="#/vacinas">${I.vacina}Vacinas</a><a class="stats-link" href="#/ler">${I.camera}Ler pedigree</a><span><b>${ativos.length}</b> no pombal</span><span><b>${ativos.filter(p => p.sexo === 'M').length}</b> machos</span><span><b>${ativos.filter(p => p.sexo === 'F').length}</b> fêmeas</span><span><b>${noPlantel}</b> no plantel</span></div>
+    <div class="atalhos">
+      <a class="atalho" href="#/ler">${I.camera}<span><b>Ler pedigree</b><small>por foto ou PDF</small></span></a>
+      <a class="atalho so-celular" href="#/vacinas">${I.vacina}<span><b>Vacinas</b><small>vacinar o plantel</small></span></a>
+    </div>
+    <p class="resumo-plantel">${plural(ativos.length, 'pombo', 'pombos')} no pombal: ${plural(machos, 'macho', 'machos')} e ${plural(femeas, 'fêmea', 'fêmeas')}.</p>
     ${avisoVacinasHtml()}
-    <div class="search">${I.search}<input class="input" id="q" type="search" placeholder="Buscar por anilha, nome, cor ou pais" value="${esc(state.q)}" aria-label="Buscar"></div>
-    <div class="chips">${chip('todos', 'Todos')}${chip('ativo', 'No pombal')}${chip('M', '♂ Machos')}${chip('F', '♀ Fêmeas')}${chip('referencia', `Ancestrais${ancestrais ? ` (${ancestrais})` : ''}`)}${chip('saiu', 'Saíram')}</div>
+    <div class="search">${I.search}<input class="input" id="q" type="search" placeholder="Procurar pela anilha, nome ou cor" value="${esc(state.q)}" aria-label="Procurar pombo"></div>
+    <div class="chips">${chip('todos', 'Todos')}${chip('ativo', 'No pombal')}${chip('M', '♂ Machos')}${chip('F', '♀ Fêmeas')}${chip('referencia', `Ancestrais${ancestrais ? ` (${ancestrais})` : ''}`)}${chip('saiu', 'Saíram do pombal')}</div>
     <ul class="list" id="lista">${listaHtml()}</ul>`, { direita: novo });
 }
 
@@ -496,8 +505,8 @@ function vFormPombo(r, q) {
       <p class="msg info full">Você está cadastrando ${lado === 'pai' ? 'o <b>pai</b>' : 'a <b>mãe</b>'} de <b class="mono">${esc(anilha(filho))}</b>${filho.nome ? ' (' + esc(filho.nome) + ')' : ''}. Ao salvar, ${lado === 'pai' ? 'ele' : 'ela'} já fica ligad${lado === 'pai' ? 'o' : 'a'} no pedigree.</p>` : ''}
     ${!editando && !filho ? `<p class="msg info full">Tem o pedigree deste pombo? <a href="#/ler">Leia a foto ou o PDF com IA</a> e cadastre o pombo e os ancestrais de uma vez.</p>` : ''}
     <p class="msg erro full" id="f-erro" role="alert" hidden></p>
+    <h2 class="form-tit full primeiro"><span>1</span>Anilha</h2>
     <div class="full field-group">
-      <span class="label">Anilha</span>
       <div class="row-3">
         <div class="field"><label for="f-num">Número</label><input class="input mono" id="f-num" maxlength="30" placeholder="1402317" value="${esc(ring.numero)}" required autocomplete="off"></div>
         <div class="field"><label for="f-ano">Ano</label><input class="input mono" id="f-ano" inputmode="numeric" maxlength="4" placeholder="25" value="${esc(ring.ano)}" required></div>
@@ -507,21 +516,26 @@ function vFormPombo(r, q) {
       <div id="ring-aviso"></div>
       ${editando ? '<p class="hint">Corrigir a anilha leva para o pombo certo os registros que você fez no histórico.</p>' : ''}
     </div>
+    <h2 class="form-tit full"><span>2</span>Sobre o pombo</h2>
     <div class="field"><label for="f-nome">Nome (opcional)</label><input class="input" id="f-nome" maxlength="80" placeholder="Ex.: Trovão Azul" value="${esc(p.nome)}" ${travar(p.nome)}></div>
     <div class="field"><span class="label">Sexo</span><input type="hidden" id="f-sexo" value="${esc(sexo)}">
       <div class="seg"><button type="button" class="m" data-sexo="M" aria-pressed="${sexo === 'M'}" ${travar(p.sexo)}>♂ Macho</button><button type="button" class="f" data-sexo="F" aria-pressed="${sexo === 'F'}" ${travar(p.sexo)}>♀ Fêmea</button></div></div>
-    <div class="field"><label for="f-cor">Cor</label><input class="input" id="f-cor" maxlength="60" list="cores" placeholder="Ex.: Azul barrado" value="${esc(p.cor)}" ${travar(p.cor)}><datalist id="cores">${CORES.map(c => `<option value="${c}">`).join('')}</datalist></div>
+    <div class="field"><label for="f-cor">Cor (opcional)</label><input class="input" id="f-cor" maxlength="60" list="cores" placeholder="Ex.: Azul barrado" value="${esc(p.cor)}" ${travar(p.cor)}><datalist id="cores">${CORES.map(c => `<option value="${c}">`).join('')}</datalist></div>
     <div class="field"><label for="f-nasc">Data de nascimento (opcional)</label><input class="input" id="f-nasc" type="date" value="${esc(p.nascimento)}" ${travar(p.nascimento)}></div>
+    <h2 class="form-tit full"><span>3</span>Pai e mãe</h2>
+    <p class="hint full">Escreva a anilha como está no pedigree: número/ano país. Se não souber, deixe em branco.</p>
     <div class="field"><label for="f-pai">Anilha do pai</label><input class="input mono" id="f-pai" list="machos" placeholder="Ex.: 0812-334/19 ALE" value="${esc(anilha(pai))}" ${travar(pai)} autocomplete="off"><datalist id="machos">${opcoesAnilha('M')}</datalist></div>
     <div class="field"><label for="f-mae">Anilha da mãe</label><input class="input mono" id="f-mae" list="femeas" placeholder="Ex.: 1185320/18 BEL" value="${esc(anilha(mae))}" ${travar(mae)} autocomplete="off"><datalist id="femeas">${opcoesAnilha('F')}</datalist></div>
-    <p class="hint full">Escreva a anilha dos pais como no pedigree (número/ano país). Se eles ainda não estão no seu plantel, entram como ancestrais.</p>
-    <div class="field"><label for="f-sit">Situação</label><select class="input" id="f-sit">${SIT_FORM.map(([v, l]) => `<option value="${v}" ${v === sit ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    <p class="hint full">Se o pai ou a mãe ainda não estão no seu plantel, eles entram como ancestrais (só para o pedigree).</p>
+    <h2 class="form-tit full"><span>4</span>Onde ele está</h2>
+    <div class="field"><label for="f-sit">Situação do pombo</label><select class="input" id="f-sit">${SIT_FORM.map(([v, l]) => `<option value="${v}" ${v === sit ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="field" data-se="entrou"><label for="f-origem">Como chegou ao pombal</label><select class="input" id="f-origem">${ORIGEM.map(([v, l]) => `<option value="${v}" ${v === ((r && r.origem) || '') ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="field" data-se="entrou"><label for="f-origem-obs">De quem? (opcional)</label><input class="input" id="f-origem-obs" maxlength="300" placeholder="Ex.: comprado de João, leilão do clube" value="${esc(r && r.origem_obs)}"></div>
     <div class="field" data-se="entrou"><label for="f-entrada">Data de entrada (opcional)</label><input class="input" id="f-entrada" type="date" value="${esc(r && r.data_entrada)}"></div>
     <div class="field" data-se="saiu"><label for="f-saida">Data de saída</label><input class="input" id="f-saida" type="date" value="${esc(r && r.data_saida)}"></div>
     <div class="field" data-se="saiu"><label for="f-saida-obs">Detalhes da saída (opcional)</label><input class="input" id="f-saida-obs" maxlength="300" placeholder="Ex.: vendido para Pombal Santa Rita" value="${esc(r && r.saida_obs)}"></div>
-    <div class="field full"><label for="f-obs">Títulos e observações</label><textarea class="input" id="f-obs" maxlength="4000" placeholder="Linhagem, origem, prêmios… Vai para o pedigree.">${esc(r && r.observacoes)}</textarea><p class="hint">Só você vê. Provas e resultados registre no histórico do pombo, que é compartilhado.</p></div>
+    <h2 class="form-tit full"><span>5</span>Títulos e observações</h2>
+    <div class="field full"><label for="f-obs">Linhagem, títulos e prêmios (opcional)</label><textarea class="input" id="f-obs" maxlength="4000" placeholder="Linhagem, origem, prêmios… Vai para o pedigree.">${esc(r && r.observacoes)}</textarea><p class="hint">Só você vê. Provas e resultados registre no histórico do pombo, que é compartilhado.</p></div>
     <button class="btn btn-primary btn-block full" type="submit">${editando ? 'Salvar alterações' : 'Cadastrar pombo'}</button>
   </form>
   ${editando ? `<details class="remover"><summary>Tirar este pombo do meu plantel</summary>
@@ -1860,6 +1874,7 @@ document.addEventListener('change', e => {
   if (e.target.name === 'vac-pombo') contarVacinar();
   if (e.target.id === 'ler-modelo') state.ler.modelo = e.target.value;
   if (e.target.name === 'ler-inc') contarLer();
+  if (e.target.matches('[data-mostrar-senha]') && $('#a-senha')) $('#a-senha').type = e.target.checked ? 'text' : 'password';
   if (e.target.id === 'v-unica') { $('#v-qtd').disabled = $('#v-un').disabled = e.target.checked; }
 });
 
