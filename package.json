@@ -1,0 +1,8 @@
+{
+  "name": "pedigree-gratis",
+  "private": true,
+  "description": "Pedigree Grátis: site estático + função do servidor (api/) para ler pedigrees com IA",
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.6.0"
+  }
+}
