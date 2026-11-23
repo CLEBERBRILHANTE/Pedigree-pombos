@@ -865,6 +865,36 @@ async function carregarAdmin(r) {
     a.plantel[r.b] = error ? { erro: traduzir(error.message) } : { lista: data || [] };
   }
   if (!r.a && a.aba === 'pombos' && !a.pombos) await buscarPombosAdmin();
+  if (!r.a && a.aba === 'ia' && !a.leituras) await buscarLeiturasAdmin();
+}
+
+// Leituras com IA: quem usou, quantas e quanto custou.
+async function buscarLeiturasAdmin() {
+  const [us, rec] = await Promise.all([sb.rpc('admin_leituras_ia_usuarios'), sb.rpc('admin_leituras_ia_recentes', { p_limite: 50 })]);
+  const err = us.error || rec.error;
+  state.adm.leituras = err
+    ? { erro: faltaSQL(err.message) ? 'Falta rodar o arquivo 11_leituras_ia_por_usuario.sql no Supabase.' : traduzir(err.message) }
+    : { usuarios: us.data || [], recentes: rec.data || [] };
+}
+
+const dolar = v => 'US$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+const dataHoraCurta = t => t ? new Date(t).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+const nomeModelo = m => /haiku/.test(m || '') ? 'Haiku' : /sonnet/.test(m || '') ? 'Sonnet' : (m || '—');
+
+function leiturasAdminHtml() {
+  const L = state.adm.leituras;
+  if (!L) return carregandoHtml;
+  if (L.erro) return `<p class="msg erro">${esc(L.erro)}</p>`;
+  if (!L.usuarios.length) return '<p class="hint">Ninguém leu um pedigree com IA ainda.</p>';
+  const quem = x => esc(x.nome_pombal || x.nome || x.email);
+  return `<section class="section"><h2>Por usuário</h2><ul class="list adm-lista">${L.usuarios.map(x => `<li><a class="adm-item" href="#/admin/usuario/${esc(x.user_id)}">
+      <span class="body"><b>${quem(x)}</b><span class="meta">${esc(x.email)}</span>
+      <span class="meta">Última leitura ${dataHoraCurta(x.ultima)} · ${num(x.pombos)} pombos lidos</span></span>
+      <span class="side"><span class="tag ok">${num(x.total)} ${x.total == 1 ? 'leitura' : 'leituras'}</span><span class="tag">${num(x.mes)} este mês</span><span class="tag">${dolar(x.custo_total)}</span></span>
+    </a></li>`).join('')}</ul></section>
+    <section class="section"><h2>Últimas leituras</h2><ul class="list adm-lista">${L.recentes.map(x => `<li><div class="adm-item">
+      <span class="body"><b>${quem(x)}</b><span class="meta">${dataHoraCurta(x.criado_em)} · ${esc(nomeModelo(x.modelo))} · ${num(x.pombos || 0)} pombos</span></span>
+      <span class="side"><span class="tag">${dolar(x.custo)}</span></span></div></li>`).join('')}</ul></section>`;
 }
 
 async function buscarPombosAdmin() {
@@ -933,9 +963,9 @@ function vAdmin(r) {
       ${card(s.fotos, 'fotos', `${tamanho(s.fotos_bytes)} de 1 GB grátis`)}
       ${a.ia ? card(a.ia.mes, 'leituras com IA este mês', `custo aprox. US$ ${num(a.ia.custo_mes, 2)} · ${num(a.ia.usuarios_mes)} usuários · total ${num(a.ia.total)} (US$ ${num(a.ia.custo_total, 2)})`) : ''}
     </div>
-    <div class="chips">${chip('usuarios', 'Usuários e pombais')}${chip('pombos', 'Pombos')}</div>
-    <div class="search">${I.search}<input class="input" id="q-adm" type="search" placeholder="${usuarios ? 'Buscar por e-mail, nome, pombal ou cidade' : 'Buscar por anilha, nome ou cor'}" value="${esc(a.busca)}" aria-label="Buscar"></div>
-    <ul class="list ${usuarios ? 'adm-lista' : 'grade'}" id="lista-adm">${usuarios ? listaUsuariosAdminHtml() : listaPombosAdminHtml()}</ul>
+    <div class="chips">${chip('usuarios', 'Usuários e pombais')}${chip('pombos', 'Pombos')}${chip('ia', 'Leituras com IA')}</div>
+    ${a.aba === 'ia' ? leiturasAdminHtml() : `<div class="search">${I.search}<input class="input" id="q-adm" type="search" placeholder="${usuarios ? 'Buscar por e-mail, nome, pombal ou cidade' : 'Buscar por anilha, nome ou cor'}" value="${esc(a.busca)}" aria-label="Buscar"></div>
+    <ul class="list ${usuarios ? 'adm-lista' : 'grade'}" id="lista-adm">${usuarios ? listaUsuariosAdminHtml() : listaPombosAdminHtml()}</ul>`}
     <button type="button" class="btn btn-ghost" data-adm-atualizar>Atualizar números</button>`);
 }
 
@@ -1580,8 +1610,8 @@ document.addEventListener('click', async e => {
     toast('Vacina apagada.');
     return;
   }
-  if (d.admAba) { state.adm.aba = d.admAba; state.adm.busca = ''; render(); if (d.admAba === 'pombos' && !state.adm.pombos) { await buscarPombosAdmin(); render(); } return; }
-  if (t.hasAttribute('data-adm-atualizar')) { state.adm = Object.assign(state.adm, { carregado: false, pombos: null, plantel: {} }); render(); await abrirRota(); toast('Números atualizados.'); return; }
+  if (d.admAba) { state.adm.aba = d.admAba; state.adm.busca = ''; render(); if (d.admAba === 'pombos' && !state.adm.pombos) { await buscarPombosAdmin(); render(); } if (d.admAba === 'ia' && !state.adm.leituras) { await buscarLeiturasAdmin(); render(); } return; }
+  if (t.hasAttribute('data-adm-atualizar')) { state.adm = Object.assign(state.adm, { carregado: false, pombos: null, leituras: null, plantel: {} }); render(); await abrirRota(); toast('Números atualizados.'); return; }
   if (d.pdf) {
     const rotulo = t.innerHTML;
     t.disabled = true; t.textContent = 'Gerando PDF…';
