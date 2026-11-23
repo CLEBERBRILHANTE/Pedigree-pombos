@@ -1475,22 +1475,75 @@ async function salvarLeitura(form) {
 }
 
 // ----- Ajuda -----
+const GUIA_ALT = { cadastrar: 600, ler: 440, pedigree: 560, vacinar: 520, aviso: 420, irmaos: 560 }; // altura das imagens (largura 390)
 function vAjuda() {
   const q = (t, r) => `<details class="faq"><summary>${t}</summary><p>${r}</p></details>`;
+  // Guia: um assunto por vez, passos curtos e numerados, com a imagem da tela.
+  const guia = (ico, titulo, sub, img, alt, passos) => `<details class="guia">
+    <summary><span class="guia-ico">${ico}</span><span class="guia-tit"><b>${titulo}</b><small>${sub}</small></span></summary>
+    <div class="guia-corpo">
+      ${img ? `<figure class="guia-img"><img src="img/ajuda/${img}.jpg" alt="${esc(alt)}" loading="lazy" width="390" height="${GUIA_ALT[img]}"></figure>` : ''}
+      <ol class="passos">${passos.map(x => `<li><span>${x}</span></li>`).join('')}</ol>
+    </div></details>`;
   return shell('ajuda', 'Ajuda', 'Dúvidas e contato', `
     <section class="card ajuda-contato"><h2>Fale com a gente</h2>
-      <p class="hint">Tem uma dúvida, achou um erro ou quer sugerir uma melhoria? Mande uma mensagem.</p>${contatosHtml()}</section>
-    <section class="section"><h2>Perguntas frequentes</h2>
-      ${q('Como cadastro um pombo?', 'Toque em <b>Cadastrar</b>, digite a anilha (ex.: 1402317/23 BRA) e preencha o que souber. Se a anilha já foi usada por outro pombal no app, o histórico dela aparece na hora.')}
-      ${q('Comprei um pombo que já está no app. Preciso digitar os pais e avós?', 'Não. Ao digitar a anilha em <b>Cadastrar</b>, se outro criador já cadastrou os ancestrais dele, aparece a opção <b>Copiar os ancestrais</b>. Eles viram uma cópia sua, que você pode mudar sem mexer no cadastro do outro criador. As fotos e os dados do outro criador não são copiados.')}
-      ${q('Como funciona a vacinação?', 'Em <b>Vacinas</b>, cadastre cada vacina com a marca e de quanto em quanto tempo revacinar. Toque em <b>Iniciar vacinação</b>: aparece a lista dos pombos que precisam da vacina, já marcados. Confirme e cada um ganha um registro de Saúde no histórico. Eles saem da lista até a próxima dose, e o app avisa na tela Plantel quando a revacinação estiver chegando.')}
-      ${q('O que são os ancestrais?', 'São os pais, avós e outros pombos que você cadastra só para montar o pedigree. Eles ficam guardados, mas não contam no seu plantel. Para vê-los, use o filtro <b>Ancestrais</b> na tela Plantel. Se um ancestral estiver no seu pombal, edite o pombo e mude a situação para "Está no meu pombal".')}
-      ${q('Vendi, cedi ou perdi um pombo. O que faço?', 'Edite o pombo e mude a situação (vendido, cedido, perdido ou morreu). Assim a passagem dele pelo seu pombal fica registrada. Use "Tirar do meu plantel" só se cadastrou por engano. Mesmo assim, o histórico dele fica guardado.')}
-      ${q('Quem vê o histórico do pombo?', 'O histórico (provas, prêmios, saúde, reprodução, entradas e saídas) é compartilhado com todos os pombais que tiverem a mesma anilha. Cada registro só pode ser alterado ou apagado por quem o cadastrou.')}
-      ${q('Quem vê o nome, a cor, os pais e as fotos do meu pombo?', 'Só você. Se outro pombal cadastrar a mesma anilha, ele tem a cópia dele desses dados, e o que ele mudar não aparece para você.')}
-      ${q('Dá para cadastrar a partir de um pedigree que já tenho?', 'Sim. Toque em <b>Ler pedigree</b> (na tela Plantel ou em Cadastrar), tire uma foto do pedigree ou escolha o PDF. A inteligência artificial lê as anilhas, nomes, cores e títulos até os trisavós e mostra tudo para você conferir e corrigir. Ao confirmar, o pombo e os ancestrais são cadastrados já ligados como pais e filhos. Confira sempre as anilhas, porque a leitura pode errar. Há um limite de leituras por dia e por mês.')}
-      ${q('Como emito o pedigree?', 'Toque em <b>Pedigree</b>, escolha o pombo e baixe o PDF. Ele sai com 5 gerações. No cabeçalho vão os dados de <a href="#/conta">Meu pombal</a>.')}
-      ${q('Como coloco as fotos do olho e da cabeça?', 'Abra a ficha do pombo e use a parte de fotos. Dá para tirar a foto na hora ou escolher da galeria.')}
+      <p class="hint">Ficou com dúvida, achou um erro ou quer sugerir uma melhoria? Mande uma mensagem.</p>${contatosHtml()}</section>
+
+    <section class="section"><h2>Passo a passo</h2>
+      <p class="guia-dica">Toque no assunto para ver como fazer.</p>
+      ${guia(I.plus, 'Cadastrar um pombo', 'Digitando a anilha', 'cadastrar', 'Tela Cadastrar pombo', [
+        'Toque em <b>Cadastrar</b> (o botão <b>+</b> no meio da barra de baixo).',
+        'Digite o <b>número</b>, o <b>ano</b> e o <b>país</b> da anilha.',
+        'Preencha o que souber: nome, macho ou fêmea, cor, pai e mãe. O que não souber, pode deixar em branco.',
+        'Toque em <b>Cadastrar pombo</b> no fim da tela.'])}
+      ${guia(I.camera, 'Cadastrar a partir de um pedigree pronto', 'O app lê a foto do pedigree para você', 'ler', 'Tela Ler pedigree', [
+        'Na tela <b>Plantel</b>, toque em <b>Ler pedigree</b>.',
+        'Toque em <b>Escolher foto ou PDF</b>. Você pode tirar uma foto do pedigree de papel ou escolher o arquivo do pedigree que recebeu no celular.',
+        'Espere. O app lê sozinho e leva até 1 minuto. Não feche a tela.',
+        '<b>Confira</b> as anilhas e os nomes que apareceram. Se algo estiver errado, toque e corrija.',
+        'Toque em <b>Cadastrar</b>. O pombo, os pais e os avós entram de uma vez, já ligados.',
+        'Dica: tire a foto de frente, com boa luz e sem cortar as bordas. Cada pessoa pode ler até 5 pedigrees por dia e 30 por mês.'])}
+      ${guia(I.list, 'Comprei um pombo que já está no app', 'Não precisa digitar pais e avós de novo', 'cadastrar', 'Opção Copiar os ancestrais', [
+        'Toque em <b>Cadastrar</b> e digite a anilha do pombo.',
+        'Se outro criador já cadastrou esse pombo, aparece um quadro azul dizendo <b>Este pombo já está no app</b>.',
+        'Deixe marcado <b>Copiar os ancestrais</b>.',
+        'Toque em <b>Cadastrar pombo</b>. Os pais, avós, bisavós e trisavós vêm junto.',
+        'É uma cópia sua: você pode mudar o que quiser, e nada muda para o outro criador. As fotos dele não vêm.'])}
+      ${guia(I.tree, 'Tirar o pedigree para imprimir ou enviar', 'Folha pronta com 5 gerações', 'pedigree', 'Tela Pedigree', [
+        'Toque em <b>Pedigree</b> na barra de baixo.',
+        'Escolha o pombo na lista.',
+        'Se quiser, escreva um texto para o quadro do pombo (linhagem, títulos).',
+        'Toque em <b>Baixar pedigree em PDF</b>. O arquivo fica salvo no celular, pronto para imprimir ou mandar pelo WhatsApp.',
+        'Os dados do seu pombal no alto da folha vêm de <a href="#/conta">Meu pombal</a>.'])}
+      ${guia(I.vacina, 'Vacinar vários pombos de uma vez', 'Marque todos e confirme', 'vacinar', 'Tela de vacinação', [
+        'Abra <b>Vacinas</b>. No celular, o link fica no alto da tela Plantel.',
+        'Na primeira vez, toque em <b>Cadastrar vacina</b>. Escreva o nome, a marca e de quanto em quanto tempo revacinar.',
+        'Toque em <b>Iniciar vacinação</b>. Aparecem os pombos que precisam da vacina, <b>já marcados</b>.',
+        'Desmarque quem não foi vacinado e confira a data.',
+        'Toque em <b>Confirmar vacinação</b>. Cada pombo ganha o registro no histórico e sai da lista até a próxima dose.'])}
+      ${guia(I.vacina, 'Aviso de revacinação', 'O app lembra você', 'aviso', 'Aviso de revacinação na tela Plantel', [
+        'Quando faltar <b>7 dias ou menos</b> para a próxima dose, aparece um aviso no alto da tela <b>Plantel</b>.',
+        'Toque em <b>Vacinar</b> no aviso. A lista dos pombos que precisam da vacina já abre pronta.',
+        'Se a dose já venceu, o aviso fica vermelho.'])}
+      ${guia(I.user, 'Ver os irmãos de um pombo', 'Irmãos inteiros e meio-irmãos', 'irmaos', 'Parte Irmãos na ficha do pombo', [
+        'Na tela <b>Plantel</b>, toque no pombo para abrir a ficha.',
+        'Desça até a parte <b>Irmãos</b>.',
+        '<b>Irmãos inteiros</b> têm o mesmo pai e a mesma mãe. <b>Meio-irmãos</b> têm só o pai ou só a mãe em comum.',
+        'Para aparecer, o pombo precisa ter o pai e a mãe cadastrados.'])}
+      ${guia(I.edit, 'Vendi, cedi, perdi ou morreu um pombo', 'Não apague: mude a situação', null, '', [
+        'Abra a ficha do pombo e toque em <b>Editar</b>.',
+        'Em <b>Situação</b>, escolha vendido, cedido, perdido ou morreu.',
+        'Toque em <b>Salvar alterações</b>. A passagem dele pelo seu pombal fica no histórico.',
+        'Use "Tirar do meu plantel" só se cadastrou o pombo por engano. Mesmo assim, o histórico dele não se perde.'])}
+    </section>
+
+    <section class="section"><h2>Outras dúvidas</h2>
+      ${q('O que são os "ancestrais"?', 'São os pais, avós e outros pombos que você cadastra só para montar o pedigree. Eles ficam guardados, mas <b>não contam no seu plantel</b>. Para vê-los, toque em <b>Ancestrais</b> na tela Plantel.')}
+      ${q('Se eu tirar um pombo do plantel, perco o histórico dele?', 'Não. Provas, prêmios, vacinas, entradas e saídas ficam guardados para sempre na anilha. Depois de tirar o pombo, os registros que você fez não podem mais ser mudados nem apagados.')}
+      ${q('Quem vê o histórico do pombo?', 'O histórico (provas, prêmios, saúde, entradas e saídas) aparece para todos os pombais que têm a mesma anilha, com o nome de quem registrou. Só quem registrou pode mudar ou apagar.')}
+      ${q('Quem vê o nome, a cor, os pais e as fotos do meu pombo?', 'Só você. Suas fotos, observações, vacinas, e-mail e telefone também ficam só com você.')}
+      ${q('Registrei uma vacina por engano. Como desfaço?', 'Abra a ficha do pombo, toque em <b>Editar</b> no registro da vacina, no histórico, e depois em <b>Apagar este registro</b>. O pombo volta para a lista de quem precisa da vacina.')}
+      ${q('Como coloco as fotos do olho e da cabeça?', 'Abra a ficha do pombo e toque em <b>Adicionar</b>, embaixo de Olho ou de Cabeça. Dá para tirar a foto na hora ou escolher uma que já está no celular.')}
     </section>`);
 }
 
