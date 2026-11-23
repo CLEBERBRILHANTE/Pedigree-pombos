@@ -322,7 +322,7 @@ function fotosHtml(p, r, pronto) {
       : caminho ? `<div class="foto-vazia"><span>Carregando…</span></div>`
       : `<div class="foto-vazia">${I.camera}<span>Sem foto</span></div>`;
     const botoes = pode && !enviando ? `<div class="foto-acoes">
-        <label class="btn btn-ghost btn-sm">${I.camera}${caminho ? 'Trocar' : 'Adicionar'}<input type="file" accept="image/*" data-foto="${tipo}" data-pombo="${esc(p.id)}" hidden></label>
+        <label class="btn btn-ghost btn-sm">${I.camera}${caminho ? 'Trocar foto' : 'Adicionar foto'}<input type="file" accept="image/*" data-foto="${tipo}" data-pombo="${esc(p.id)}" hidden></label>
         ${caminho ? `<button type="button" class="link" data-foto-remover="${tipo}" data-pombo="${esc(p.id)}">Remover</button>` : ''}</div>` : '';
     return `<figure class="foto"><figcaption>${rot}</figcaption>${img}${botoes}</figure>`;
   };
@@ -446,11 +446,12 @@ function vFicha(id) {
     </div>
     <div class="actions">${acoes}</div>
     ${!r ? '<p class="hint">Este pombo aparece aqui porque é ancestral de um pombo seu.</p>' : ''}
+    <nav class="pular so-celular" aria-label="Ir para"><span>Ir para:</span><button type="button" class="chip" data-ir="sec-hist">Histórico</button><button type="button" class="chip" data-ir="sec-irmaos">Irmãos</button><button type="button" class="chip" data-ir="sec-filhos">Filhos</button></nav>
     <div class="ficha-grid">
     <div class="col">
     <section class="section"><h2>Pais</h2><div class="parents">${pcard(p.pai_id, 'Pai', 'M')}${pcard(p.mae_id, 'Mãe', 'F')}</div></section>
     ${fotosHtml(p, r, pronto)}
-    ${r && r.observacoes ? `<section class="section"><h2>Minhas observações</h2><p class="obs">${esc(r.observacoes)}</p><p class="hint">Só você vê estas observações.</p></section>` : ''}
+    ${r && r.observacoes ? `<section class="section"><h2>Títulos e observações</h2><p class="obs">${esc(r.observacoes)}</p><p class="hint">Só você vê estas observações.</p></section>` : ''}
     <section class="section"><h2>Pombais por onde passou</h2>
       ${!pronto ? carregandoHtml : donos.length ? `<ul class="donos">${donos.map(d => `<li class="${d.voce ? 'voce' : ''}">
         <b>${esc(d.nome_pombal)}${d.voce ? ' (você)' : ''}</b>
@@ -459,19 +460,20 @@ function vFicha(id) {
         ${d.data_entrada || d.data_saida ? `<small>${d.data_entrada ? 'Desde ' + dataBR(d.data_entrada) : ''}${d.data_saida ? (d.data_entrada ? ' até ' : 'Até ') + dataBR(d.data_saida) : ''}</small>` : ''}
       </li>`).join('')}</ul>` : '<p class="hint">Nenhum pombal tem este pombo no plantel.</p>'}
     </section>
-    <section class="section"><h2>Irmãos${pronto && totalIrmaos ? ` (${totalIrmaos})` : ''}</h2>
+    <section class="section" id="sec-irmaos"><h2>Irmãos${pronto && totalIrmaos ? ` (${totalIrmaos})` : ''}</h2>
       ${!p.pai_id && !p.mae_id ? '<p class="hint">Cadastre o pai e a mãe deste pombo para ver os irmãos dele.</p>'
         : !pronto ? carregandoHtml : totalIrmaos
           ? `${grupoIrmaos('Irmãos inteiros · mesmo pai e mesma mãe', irm.inteiros)}${grupoIrmaos('Meio-irmãos por parte de pai', irm.pai)}${grupoIrmaos('Meio-irmãos por parte de mãe', irm.mae)}`
           : '<p class="hint">Nenhum irmão cadastrado no app.</p>'}
       ${pronto && totalIrmaos && (!p.pai_id || !p.mae_id) ? `<p class="hint">Falta cadastrar ${!p.pai_id ? 'o pai' : 'a mãe'}: por isso ainda não dá para saber quem é irmão inteiro.</p>` : ''}
     </section>
-    <section class="section"><h2>Filhos (${filhos.length})</h2>
+    <section class="section" id="sec-filhos"><h2>Filhos (${filhos.length})</h2>
       ${!pronto ? carregandoHtml : filhos.length ? listaParentes(filhos) : '<p class="hint">Nenhum filho cadastrado no app.</p>'}
     </section>
     </div>
-    <section class="section col"><h2>Histórico</h2>
-      <p class="hint">O histórico é compartilhado: todos os pombais que têm ou tiveram este pombo veem os mesmos registros.</p>
+    <section class="section col" id="sec-hist"><h2>Histórico</h2>
+      <p class="hint">Provas, prêmios, vacinas e por onde o pombo passou. Todos os pombais que têm ou tiveram este pombo veem o mesmo histórico.</p>
+      ${r ? `<a class="btn btn-ghost" href="#/evento/${p.id}">${I.plus}Registrar no histórico</a>` : ''}
       ${f.erro && f.id === id ? `<p class="msg erro">${esc(f.erro)}</p>` : !pronto ? carregandoHtml : historicoHtml(p)}
     </section>
     </div>`;
@@ -589,16 +591,16 @@ function vFormEvento(pomboId, eventoId) {
   const corpo = `<form id="f-evento" class="form-grid" novalidate>
     <input type="hidden" id="e-pombo" value="${esc(pomboId)}">${e ? `<input type="hidden" id="e-id" value="${esc(e.id)}">` : ''}
     <p class="msg erro full" id="e-erro" role="alert" hidden></p>
-    <div class="field"><label for="e-tipo">Tipo</label><select class="input" id="e-tipo">${TIPOS_MANUAIS.map(t => `<option value="${t}" ${t === tipo ? 'selected' : ''}>${TIPOS[t]}</option>`).join('')}</select></div>
+    <div class="field"><label for="e-tipo">O que você quer registrar?</label><select class="input" id="e-tipo">${TIPOS_MANUAIS.map(t => `<option value="${t}" ${t === tipo ? 'selected' : ''}>${TIPOS[t]}</option>`).join('')}</select></div>
     <div class="field"><label for="e-data">Data</label><input class="input" id="e-data" type="date" value="${esc(e ? e.data : hoje)}"></div>
-    <div class="field full" data-tipo="prova"><label for="e-prova">Prova / local de soltura</label><input class="input" id="e-prova" maxlength="200" placeholder="Ex.: Campeonato Estadual · Soltura em Uberlândia" value="${esc(e && e.prova_nome)}"></div>
+    <div class="field full" data-tipo="prova"><label for="e-prova">Nome da prova ou local da soltura</label><input class="input" id="e-prova" maxlength="200" placeholder="Ex.: Campeonato Estadual · Soltura em Uberlândia" value="${esc(e && e.prova_nome)}"></div>
     <div class="field" data-tipo="prova"><label for="e-col">Colocação</label><input class="input" id="e-col" type="number" min="1" inputmode="numeric" placeholder="Ex.: 1" value="${esc(e && e.colocacao)}"></div>
     <div class="field" data-tipo="prova"><label for="e-part">Total de pombos na prova</label><input class="input" id="e-part" type="number" min="1" inputmode="numeric" placeholder="Ex.: 1840" value="${esc(e && e.participantes)}"></div>
     <div class="field" data-tipo="prova"><label for="e-dist">Distância (km)</label><input class="input" id="e-dist" type="number" min="0" step="0.1" inputmode="decimal" placeholder="Ex.: 320" value="${esc(e && e.distancia_km)}"></div>
     <div class="field" data-tipo="prova"><label for="e-vel">Velocidade (m/min)</label><input class="input" id="e-vel" type="number" min="0" step="0.001" inputmode="decimal" placeholder="Ex.: 1245.5" value="${esc(e && e.velocidade)}"></div>
     <div class="field full"><label for="e-desc">Detalhes</label><textarea class="input" id="e-desc" maxlength="2000" placeholder="Ex.: vacina contra paramixovírus; acasalado com a 1185320/18 BEL; 1º ás pombo do clube…">${esc(e && e.descricao)}</textarea></div>
-    <p class="hint full">Este registro fica visível para todos os pombais que tiverem este pombo, com o nome do seu pombal. Só você pode alterar ou apagar o que registrou.</p>
-    <button class="btn btn-primary btn-block full" type="submit">${e ? 'Salvar alterações' : 'Registrar'}</button>
+    <p class="hint full">Preencha só o que souber. Este registro aparece para todos os pombais que tiverem este pombo, com o nome do seu pombal. Só você pode alterar ou apagar o que registrou.</p>
+    <button class="btn btn-primary btn-block full" type="submit">${e ? 'Salvar alterações' : 'Salvar no histórico'}</button>
     ${e ? `<button class="btn btn-perigo btn-block full" type="button" data-apagar-evento="${esc(e.id)}">Apagar este registro</button>` : ''}
   </form>`;
   return shell('evento', e ? 'Editar registro' : 'Registrar no histórico', `${anilha(p)}${p.nome ? ' · ' + p.nome : ''}`, corpo, { voltar: `#/pombo/${pomboId}` });
@@ -639,8 +641,8 @@ function vPedigreeEscolher() {
       <p>${MSG_SO_MEU_POMBAL} Cadastre um pombo do seu pombal, com pai e mãe, para emitir o pedigree dele.</p><a class="btn btn-primary" href="#/novo">${I.plus}Cadastrar pombo</a></div>`);
   }
   return shell('pedigree', 'Pedigree', 'Escolha o pombo', `${erroDados()}
-    <p class="hint">O pedigree sai em PDF (folha A4) com 5 gerações: o pombo, pais, avós, bisavós e trisavós. No cabeçalho vão os dados de <a href="#/conta">Meu pombal</a>. Aparecem só os pombos que estão ou já passaram pelo seu pombal.</p>
-    <div class="search">${I.search}<input class="input" id="q-ped" type="search" placeholder="Buscar por anilha, nome ou cor" value="${esc(state.q)}" aria-label="Buscar"></div>
+    <p class="hint">Toque no pombo para tirar o pedigree dele. Sai uma folha A4 em PDF com 5 gerações (pombo, pais, avós, bisavós e trisavós), pronta para imprimir ou mandar pelo WhatsApp. Aparecem só os pombos que estão ou já passaram pelo seu pombal.</p>
+    <div class="search">${I.search}<input class="input" id="q-ped" type="search" placeholder="Procurar pela anilha, nome ou cor" value="${esc(state.q)}" aria-label="Procurar pombo"></div>
     <ul class="list" id="lista-ped">${listaPedigreeHtml()}</ul>`);
 }
 
@@ -685,8 +687,10 @@ function vPedigree(id) {
   let geracoes = '';
   for (let g = 1; g <= 4; g++) {
     const cards = [];
-    for (let n = 2 ** g; n < 2 ** (g + 1); n++) cards.push(pcardPed(pos[n], n, pos, id));
-    geracoes += `<section class="section"><h2>${NOMES_GERACAO[g]}</h2><div class="ped-ger g${g}">${cards.join('')}</div></section>`;
+    let algum = false;
+    for (let n = 2 ** g; n < 2 ** (g + 1); n++) { cards.push(pcardPed(pos[n], n, pos, id)); if (pos[n] || pos[n >> 1]) algum = true; }
+    geracoes += `<section class="section"><h2>${NOMES_GERACAO[g]}</h2>${algum ? `<div class="ped-ger g${g}">${cards.join('')}</div>`
+      : `<p class="hint ped-vazia">Ainda sem ${NOMES_GERACAO[g].toLowerCase()} cadastrados. Cadastre primeiro ${g === 1 ? 'o pai e a mãe' : NOMES_GERACAO[g - 1] === 'Avós' ? 'os avós' : 'os ' + NOMES_GERACAO[g - 1].toLowerCase()}.</p>`}</section>`;
   }
   const corpo = `
     <div class="hero ${sexoCls(p.sexo)}">
@@ -695,11 +699,12 @@ function vPedigree(id) {
       <div class="tags"><span class="tag">${sym(p.sexo)} ${sexoTxt(p.sexo)}</span>${p.cor ? `<span class="tag">${esc(p.cor)}</span>` : ''}<span class="tag">${30 - faltam} de 30 ancestrais cadastrados</span></div>
     </div>
     ${semCabecalho ? `<p class="msg info">Preencha os dados de <a href="#/conta">Meu pombal</a> (nome do pombal, cidade, telefone) para eles saírem no cabeçalho do pedigree.</p>` : ''}
-    <div class="field"><label for="ped-texto">Texto no quadro do pombo</label>
+    <div class="actions ped-acoes"><button class="btn btn-primary" type="button" data-pdf="${esc(p.id)}">${I.tree}Baixar pedigree em PDF</button><a class="btn btn-ghost" href="#/pedigree">Escolher outro pombo</a></div>
+    <div class="field"><label for="ped-texto">Texto no quadro do pombo (opcional)</label>
       <textarea class="input" id="ped-texto" maxlength="4000" placeholder="Ex.: Pombo cedido a Fulano · Linhagem, títulos e prêmios">${esc(r && r.observacoes)}</textarea>
-      <p class="hint">Vem das observações do pombo. Pode mudar aqui só para este PDF. O texto de cada ancestral vem de "Títulos e observações" na ficha dele.</p></div>
+      <p class="hint">Linhagem, títulos e prêmios. Vem das observações do pombo; mudar aqui vale só para este PDF. O texto de cada ancestral vem de "Títulos e observações" na ficha dele.</p></div>
     ${p.foto_olho || p.foto_cabeca ? `<label class="check"><input type="checkbox" id="ped-fotos" checked> Incluir no PDF as fotos ${p.foto_olho && p.foto_cabeca ? 'do olho e da cabeça' : p.foto_olho ? 'do olho' : 'da cabeça'}</label>` : ''}
-    <div class="actions"><button class="btn btn-primary" type="button" data-pdf="${esc(p.id)}">${I.tree}Baixar pedigree em PDF</button><a class="btn btn-ghost" href="#/pedigree">Escolher outro pombo</a></div>
+    <h2 class="ped-arvore-tit">Ancestrais</h2>
     <p class="hint">Toque em um ancestral para editar os dados dele${faltam ? `, ou em "Cadastrar" para preencher um quadro vazio. ${faltam === 1 ? 'Falta 1 ancestral' : `Faltam ${faltam} ancestrais`}; os quadros vazios saem em branco no PDF` : ''}.</p>
     ${geracoes}`;
   return shell('pedigree', 'Pedigree', anilha(p) + (p.nome ? ' · ' + p.nome : ''), corpo, { voltar: '#/pedigree' });
@@ -1651,7 +1656,7 @@ function vAjuda() {
       ${q('Quem vê o histórico do pombo?', 'O histórico (provas, prêmios, saúde, entradas e saídas) aparece para todos os pombais que têm a mesma anilha, com o nome de quem registrou. Só quem registrou pode mudar ou apagar.')}
       ${q('Quem vê o nome, a cor, os pais e as fotos do meu pombo?', 'Só você. Suas fotos, observações, vacinas, e-mail e telefone também ficam só com você.')}
       ${q('Registrei uma vacina por engano. Como desfaço?', 'Abra a ficha do pombo, toque em <b>Editar</b> no registro da vacina, no histórico, e depois em <b>Apagar este registro</b>. O pombo volta para a lista de quem precisa da vacina.')}
-      ${q('Como coloco as fotos do olho e da cabeça?', 'Abra a ficha do pombo e toque em <b>Adicionar</b>, embaixo de Olho ou de Cabeça. Dá para tirar a foto na hora ou escolher uma que já está no celular.')}
+      ${q('Como coloco as fotos do olho e da cabeça?', 'Abra a ficha do pombo e toque em <b>Adicionar foto</b>, embaixo de Olho ou de Cabeça. Dá para tirar a foto na hora ou escolher uma que já está no celular.')}
     </section>`);
 }
 
@@ -1781,9 +1786,10 @@ async function recarregarTudo(pid) {
 
 // ---------- Eventos ----------
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-ler-iniciar],[data-ler-escolher],[data-ler-outro],[data-vac-apagar],[data-vac-marcar],[data-adm-aba],[data-adm-atualizar],[data-foto-remover],[data-logo-remover],[data-pdf],[data-auth],[data-sair],[data-filtro],[data-hist],[data-sexo],[data-remover],[data-apagar-evento]');
+  const t = e.target.closest('[data-ir],[data-ler-iniciar],[data-ler-escolher],[data-ler-outro],[data-vac-apagar],[data-vac-marcar],[data-adm-aba],[data-adm-atualizar],[data-foto-remover],[data-logo-remover],[data-pdf],[data-auth],[data-sair],[data-filtro],[data-hist],[data-sexo],[data-remover],[data-apagar-evento]');
   if (!t) return;
   const d = t.dataset;
+  if (d.ir) { const alvo = document.getElementById(d.ir); if (alvo) alvo.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
   if (d.fotoRemover) { removerFoto(t); return; }
   if (t.hasAttribute('data-logo-remover')) { removerLogo(t); return; }
   if (t.hasAttribute('data-ler-iniciar')) { lerPedigree(); return; }

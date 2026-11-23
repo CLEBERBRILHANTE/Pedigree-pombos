@@ -469,3 +469,14 @@ main.view > .stack > [data-adm-atualizar] { justify-self: start; }
   .form-tit:not(.primeiro) { border-top: 1px solid var(--line); padding-top: 18px; }
 }
 .hint.centro { text-align: center; }
+/* Ficha: atalhos para descer até a parte certa (celular) */
+.pular { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pular > span { font-size: 15px; color: var(--muted); font-weight: 600; }
+#sec-hist, #sec-irmaos, #sec-filhos { scroll-margin-top: 90px; }
+#sec-hist > .btn { justify-self: start; }
+/* Pedigree: botão do PDF largo e no alto */
+.ped-acoes { grid-template-columns: 1fr; }
+.ped-acoes .btn-primary { min-height: 56px; font-size: 17px; }
+.ped-arvore-tit { font-family: var(--f-display); font-size: 24px; margin: 6px 0 -6px; }
+.ped-vazia { background: var(--surface); border: 1px dashed var(--line); border-radius: 12px; padding: 12px 14px; }
+@media (min-width: 960px) { .ped-acoes { grid-template-columns: auto auto; justify-content: start; } }
