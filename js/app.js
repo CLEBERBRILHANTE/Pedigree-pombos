@@ -1595,8 +1595,8 @@ function vAjuda() {
     </div></details>`;
   return shell('ajuda', 'Ajuda', 'Dúvidas e contato', `
     <section class="card sobre-app"><h2>Sobre o app</h2>
-      <p>O ${esc(C.nomeApp)} foi criado por um ex-criador de pombos. No tempo em que criava, ele sentia falta de um app simples para cuidar do plantel.</p>
-      <p>Por isso fez este app, <b>de graça</b> para todos os columbófilos, até com a <b>leitura de pedigree por inteligência artificial</b>.</p></section>
+      <p>O ${esc(C.nomeApp)} foi idealizado por um ex-criador de pombos que, em sua época na columbofilia, sentia falta de um aplicativo simples para administrar o seu plantel.</p>
+      <p>Por esse motivo, ele desenvolveu este aplicativo, oferecido <b>gratuitamente</b> a todos os columbófilos, inclusive com a <b>leitura de pedigrees por inteligência artificial</b>.</p></section>
 
     <section class="card ajuda-contato"><h2>Fale com a gente</h2>
       <p class="hint">Ficou com dúvida, achou um erro ou quer sugerir uma melhoria? Mande uma mensagem.</p>${contatosHtml()}</section>
